@@ -1,0 +1,12 @@
+# WayFinder local-development requirements
+#
+# Install with:
+#   python -m pip install -r requirements.txt
+#
+# Archipelago source and APWorld-specific dependencies are deliberately
+# managed by WayFinder Setup rather than installed from this file.
+
+Pillow>=10.0
+pytest>=8.0
+
+packaging>=23.0
