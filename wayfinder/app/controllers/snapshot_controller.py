@@ -430,7 +430,7 @@ class SnapshotControllerMixin:
                 if incoming_state == 'running' and current_state == 'running' and incoming_step < current_step:
                     if hasattr(self, '_prep_debug'):
                         self._prep_debug("regression_ignored", incoming_state=incoming_state, incoming_step=incoming_step, current_step=current_step, reason="lower_step")
-                    for fact in ('game','slot','cache_hit','logic_source','exact_logic','elapsed','apworld','apworld_path','apworld_source','apworld_version','identification','dependency_count','locations','reachable','timings'):
+                    for fact in ('game','slot','cache_hit','logic_source','exact_logic','elapsed','apworld','apworld_path','apworld_source','apworld_version','identification','dependency_count','managed_dependency_count','locations','reachable','timings'):
                         if fact in value:
                             self._world_preparation_facts[fact]=value.get(fact)
                     return
@@ -444,7 +444,7 @@ class SnapshotControllerMixin:
                         self._prep_debug("provisional_cancel_ignored", incoming_state=incoming_state, incoming_step=incoming_step, current_step=current_step, runtime_state=runtime_state)
                     return
                 self._world_preparation_status = dict(value)
-                for fact in ('game','slot','cache_hit','logic_source','exact_logic','elapsed','apworld','apworld_path','apworld_source','apworld_version','identification','dependency_count','locations','reachable','timings'):
+                for fact in ('game','slot','cache_hit','logic_source','exact_logic','elapsed','apworld','apworld_path','apworld_source','apworld_version','identification','dependency_count','managed_dependency_count','locations','reachable','timings'):
                     if fact in value:
                         self._world_preparation_facts[fact]=value.get(fact)
                 if value.get('phase')=='reconstructing' and 'duration' in value:

@@ -244,7 +244,10 @@ class ConnectionControllerMixin:
                 "Connection cannot start until the listed setup components are installed or synced:\n\n• " + "\n• ".join(missing) + "\n\nOpen WayFinder Setup and complete these items.",
                 "Connection Error", error_code="WF-CONN-003"
             )
-            self.show_page("WayFinder Setup")
+            if missing == ["World Dependencies"] and hasattr(self, "_open_setup_stage"):
+                self._open_setup_stage(4)
+            else:
+                self.show_page("WayFinder Setup")
             return
         if not readiness["yaml_match"]:
             if not messagebox.askyesno(

@@ -319,7 +319,19 @@ class DiagnosticsPageMixin:
         version=str(facts.get("apworld_version") or "Not declared")
         identification=str(facts.get("identification") or "Not reported")
         dep_count=facts.get("dependency_count")
-        dep_status=(f"✓ {int(dep_count)}/{int(dep_count)} available" if isinstance(dep_count,(int,float)) else "Waiting for dependency report")
+        managed_dep_count=facts.get("managed_dependency_count")
+        if isinstance(managed_dep_count,(int,float)):
+            declared = int(dep_count) if isinstance(dep_count,(int,float)) else 0
+            dep_status = f"✓ {int(managed_dep_count)} managed packages available"
+            if declared:
+                dep_status += f" • {declared} APWorld requirement{'s' if declared != 1 else ''} verified"
+            else:
+                dep_status += " • no APWorld-specific requirements"
+        elif isinstance(dep_count,(int,float)):
+            dep_status = (f"✓ {int(dep_count)} APWorld requirement{'s' if int(dep_count) != 1 else ''} verified"
+                          if int(dep_count) else "✓ No APWorld-specific dependencies required")
+        else:
+            dep_status="Waiting for dependency report"
         exact_status=str(live_hooks.get("Exact seed logic","Waiting for live snapshot"))
         logic_source=str(live_hooks.get("Logic source",facts.get("logic_source") or "Waiting"))
         reconstruction=("✓ Supported" if exact_status.startswith("Available") else "! Approximate" if exact_status.startswith("Unavailable") else "○ Waiting")
