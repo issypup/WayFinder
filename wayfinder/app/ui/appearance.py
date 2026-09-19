@@ -9,6 +9,7 @@ from wayfinder.utils.ignored import ignored as _ignored
 
 import base64, hashlib, io, json, os, queue, re, shutil, subprocess, sys, tempfile, threading, time
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk, messagebox, filedialog
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,85 @@ def _atomic_write_json(path: Path, data: Any, *, backup: bool = True) -> None:
             tmp.unlink(missing_ok=True)
         except OSError:
             _ignored("intentional best-effort fallback")
+
+# Text sizing.  Every piece of WayFinder text is drawn with one of the named Tk
+# fonts below.  Named fonts are live objects: reconfiguring their size updates
+# every widget, tree tag, tooltip and canvas item that uses them, so changing
+# the setting never requires rebuilding pages or remembering individual widgets.
+FONT_FAMILY = "Segoe UI"
+FONT_FAMILY_SEMIBOLD = "Segoe UI Semibold"
+FONT_FAMILY_MONO = "Consolas"
+FONT_SIZE_MIN = 8
+FONT_SIZE_MAX = 24
+FONT_SIZE_DEFAULT = 10
+
+# Tk's own standard fonts.  Widgets created without an explicit font (plain
+# ttk labels, tk.Text consoles, menus, canvas text) fall back to these, so they
+# must follow the setting too.
+TK_STANDARD_FONTS = ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont", "TkCaptionFont", "TkTooltipFont", "TkSmallCaptionFont", "TkIconFont")
+
+def clamp_font_size(value: Any) -> int:
+    """Coerce a stored or requested text size into the supported range."""
+    try:
+        size = int(value)
+    except (TypeError, ValueError):
+        return FONT_SIZE_DEFAULT
+    return max(FONT_SIZE_MIN, min(FONT_SIZE_MAX, size))
+
+def font_specs(base: int) -> dict[str, dict[str, Any]]:
+    """Return every WayFinder named font as {name: Font options} for a base size."""
+    base = clamp_font_size(base)
+    small = max(8, base - 1)
+    return {
+        "WayFinderBody": dict(family=FONT_FAMILY, size=base, weight="normal"),
+        "WayFinderSemibold": dict(family=FONT_FAMILY_SEMIBOLD, size=base, weight="normal"),
+        "WayFinderSmall": dict(family=FONT_FAMILY, size=small, weight="normal"),
+        "WayFinderSmallSemibold": dict(family=FONT_FAMILY_SEMIBOLD, size=small, weight="normal"),
+        "WayFinderHeading": dict(family=FONT_FAMILY_SEMIBOLD, size=base + 2, weight="normal"),
+        "WayFinderPanelTitle": dict(family=FONT_FAMILY_SEMIBOLD, size=base + 4, weight="normal"),
+        "WayFinderBrand": dict(family=FONT_FAMILY_SEMIBOLD, size=base + 5, weight="normal"),
+        "WayFinderValue": dict(family=FONT_FAMILY_SEMIBOLD, size=base + 8, weight="normal"),
+        "WayFinderKpi": dict(family=FONT_FAMILY_SEMIBOLD, size=base + 10, weight="normal"),
+        "WayFinderTitle": dict(family=FONT_FAMILY_SEMIBOLD, size=base + 12, weight="normal"),
+        # Map marker text is deliberately a step smaller than body text so
+        # labels do not swamp the map, but it still tracks the setting.
+        "WayFinderMarkerLabel": dict(family=FONT_FAMILY_SEMIBOLD, size=max(7, base - 1), weight="normal"),
+        "WayFinderMarkerCount": dict(family=FONT_FAMILY, size=max(7, base - 2), weight="bold"),
+        "WayFinderLegendDot": dict(family=FONT_FAMILY_SEMIBOLD, size=base + 2, weight="normal"),
+        "WayFinderMono": dict(family=FONT_FAMILY_MONO, size=max(9, base - 1), weight="normal"),
+    }
+
+def apply_named_fonts(root: tk.Misc, base: int) -> None:
+    """Create or resize WayFinder's named fonts (and Tk's standard fonts) on ``root``.
+
+    The ``tkinter.font.Font`` wrappers are kept on the Tk root: a wrapper that
+    created its font deletes that font again when it is garbage-collected, which
+    would silently revert every widget to Tk's fallback font.
+    """
+    owner = root._root() if hasattr(root, "_root") else root
+    registry = getattr(owner, "_wayfinder_named_fonts", None)
+    if registry is None:
+        registry = {}
+        owner._wayfinder_named_fonts = registry
+    for name, options in font_specs(base).items():
+        font = registry.get(name)
+        if font is None:
+            try:
+                font = tkfont.nametofont(name, root=root)
+            except (tk.TclError, RuntimeError):
+                font = tkfont.Font(root=root, name=name, **options)
+            registry[name] = font
+        font.configure(**options)
+    body = font_specs(base)["WayFinderBody"]
+    for name in TK_STANDARD_FONTS:
+        try:
+            tkfont.nametofont(name, root=root).configure(family=body["family"], size=body["size"])
+        except (tk.TclError, RuntimeError):
+            _ignored("standard font missing on this Tk build")
+    try:
+        tkfont.nametofont("TkFixedFont", root=root).configure(family=FONT_FAMILY_MONO, size=font_specs(base)["WayFinderMono"]["size"])
+    except (tk.TclError, RuntimeError):
+        _ignored("standard font missing on this Tk build")
 
 STATUS_VISUALS = {
     "reachable": {"label": "Reachable", "symbol": "●", "color": "#2f9e6f"},
@@ -202,7 +282,9 @@ class AppearanceMixin:
         )
     def _configure_style(self):
         """Configure the shared Universal-Tracker-inspired WayFinder theme."""
-        p=self._palette(); fs=self.font_size.get() if hasattr(self,"font_size") else 10
+        p=self._palette(); fs=clamp_font_size(self.font_size.get()) if hasattr(self,"font_size") else FONT_SIZE_DEFAULT
+        apply_named_fonts(self.root, fs)
+        row_height=self._tree_row_height(fs)
         self.root.configure(bg=p["bg"]); style=ttk.Style(self.root)
         try: style.theme_use("clam")
         except tk.TclError: _ignored("intentional best-effort fallback")
@@ -215,42 +297,42 @@ class AppearanceMixin:
         style.configure("CardAlt.TFrame",background=p["card_alt"],bordercolor=p["border"],borderwidth=1,relief="solid")
 
         # Typography.
-        style.configure("TLabel",background=p["bg"],foreground=p["fg"],font=("Segoe UI",fs))
-        style.configure("Panel.TLabel",background=p["panel"],foreground=p["fg"],font=("Segoe UI",fs))
-        style.configure("Sidebar.TLabel",background=p["sidebar"],foreground=p["fg"],font=("Segoe UI",fs))
-        style.configure("Muted.TLabel",background=p["bg"],foreground=p["muted"],font=("Segoe UI",fs))
-        style.configure("Title.TLabel",background=p["bg"],foreground=p["fg"],font=("Segoe UI Semibold",fs+12))
-        style.configure("PanelTitle.TLabel",background=p["panel"],foreground=p["fg"],font=("Segoe UI Semibold",fs+4))
-        style.configure("Section.TLabel",background=p["sidebar"],foreground=p["muted"],font=("Segoe UI Semibold",max(8,fs-1)))
-        style.configure("CardTitle.TLabel",background=p["card"],foreground=p["muted"],font=("Segoe UI Semibold",max(8,fs-1)))
-        style.configure("CardHeading.TLabel",background=p["card"],foreground=p["fg"],font=("Segoe UI Semibold",fs+2))
-        style.configure("CardValue.TLabel",background=p["card"],foreground=p["fg"],font=("Segoe UI Semibold",fs+8))
-        style.configure("CardMuted.TLabel",background=p["card"],foreground=p["muted"],font=("Segoe UI",fs))
-        style.configure("CardAltTitle.TLabel",background=p["card_alt"],foreground=p["muted"],font=("Segoe UI Semibold",max(8,fs-1)))
-        style.configure("CardAltMuted.TLabel",background=p["card_alt"],foreground=p["muted"],font=("Segoe UI",fs))
-        style.configure("Emphasis.TLabel",background=p["bg"],foreground=p["success"],font=("Segoe UI Semibold",fs))
+        style.configure("TLabel",background=p["bg"],foreground=p["fg"],font="WayFinderBody")
+        style.configure("Panel.TLabel",background=p["panel"],foreground=p["fg"],font="WayFinderBody")
+        style.configure("Sidebar.TLabel",background=p["sidebar"],foreground=p["fg"],font="WayFinderBody")
+        style.configure("Muted.TLabel",background=p["bg"],foreground=p["muted"],font="WayFinderBody")
+        style.configure("Title.TLabel",background=p["bg"],foreground=p["fg"],font="WayFinderTitle")
+        style.configure("PanelTitle.TLabel",background=p["panel"],foreground=p["fg"],font="WayFinderPanelTitle")
+        style.configure("Section.TLabel",background=p["sidebar"],foreground=p["muted"],font="WayFinderSmallSemibold")
+        style.configure("CardTitle.TLabel",background=p["card"],foreground=p["muted"],font="WayFinderSmallSemibold")
+        style.configure("CardHeading.TLabel",background=p["card"],foreground=p["fg"],font="WayFinderHeading")
+        style.configure("CardValue.TLabel",background=p["card"],foreground=p["fg"],font="WayFinderValue")
+        style.configure("CardMuted.TLabel",background=p["card"],foreground=p["muted"],font="WayFinderBody")
+        style.configure("CardAltTitle.TLabel",background=p["card_alt"],foreground=p["muted"],font="WayFinderSmallSemibold")
+        style.configure("CardAltMuted.TLabel",background=p["card_alt"],foreground=p["muted"],font="WayFinderBody")
+        style.configure("Emphasis.TLabel",background=p["bg"],foreground=p["success"],font="WayFinderSemibold")
 
         # Buttons: dark, bordered controls with WayFinder pink/coral action states.
-        style.configure("TButton",background=p["card"],foreground=p["fg"],bordercolor=p["border"],lightcolor=p["card"],darkcolor=p["card"],padding=(11,7),relief="flat",font=("Segoe UI",fs))
+        style.configure("TButton",background=p["card"],foreground=p["fg"],bordercolor=p["border"],lightcolor=p["card"],darkcolor=p["card"],padding=(11,7),relief="flat",font="WayFinderBody")
         style.map("TButton",background=[("pressed",p["accent_soft"]),("active",p["card_alt"]),("disabled",p["panel"])],foreground=[("disabled",p["muted"])],bordercolor=[("focus",p["accent"]),("active",p["accent"])])
-        style.configure("Accent.TButton",background=p["accent"],foreground="#ffffff",bordercolor=p["accent"],lightcolor=p["accent"],darkcolor=p["accent"],padding=(12,7),relief="flat",font=("Segoe UI Semibold",fs))
+        style.configure("Accent.TButton",background=p["accent"],foreground="#ffffff",bordercolor=p["accent"],lightcolor=p["accent"],darkcolor=p["accent"],padding=(12,7),relief="flat",font="WayFinderSemibold")
         style.map("Accent.TButton",background=[("pressed",p["select"]),("active",p["accent_hover"]),("!disabled",p["accent"])],foreground=[("!disabled","#ffffff")],bordercolor=[("!disabled",p["accent"])])
-        style.configure("Toolbar.TButton",background=p["bg"],foreground=p["fg"],bordercolor=p["border"],padding=(11,7),relief="flat",font=("Segoe UI",fs))
+        style.configure("Toolbar.TButton",background=p["bg"],foreground=p["fg"],bordercolor=p["border"],padding=(11,7),relief="flat",font="WayFinderBody")
         style.map("Toolbar.TButton",background=[("active",p["card"])],bordercolor=[("active",p["accent"]),("focus",p["accent"])])
 
         # Navigation rail.
-        style.configure("Nav.TButton",background=p["sidebar"],foreground=p["fg"],anchor="w",padding=(13,10),borderwidth=0,relief="flat",font=("Segoe UI",fs))
+        style.configure("Nav.TButton",background=p["sidebar"],foreground=p["fg"],anchor="w",padding=(13,10),borderwidth=0,relief="flat",font="WayFinderBody")
         style.map("Nav.TButton",background=[("active",p["accent_soft"])],foreground=[("active",p["fg"])])
-        style.configure("NavActive.TButton",background=p["select"],foreground="#ffffff",anchor="w",padding=(13,10),borderwidth=0,relief="flat",font=("Segoe UI Semibold",fs))
+        style.configure("NavActive.TButton",background=p["select"],foreground="#ffffff",anchor="w",padding=(13,10),borderwidth=0,relief="flat",font="WayFinderSemibold")
         style.map("NavActive.TButton",background=[("active",p["select"]), ("!disabled",p["select"])],foreground=[("!disabled","#ffffff")])
 
         # Input controls.
         for widget_style in ("TEntry","TCombobox","TSpinbox"):
-            style.configure(widget_style,fieldbackground=p["card"],background=p["card"],foreground=p["fg"],insertcolor=p["fg"],bordercolor=p["border"],lightcolor=p["border"],darkcolor=p["border"],padding=6,font=("Segoe UI",fs))
+            style.configure(widget_style,fieldbackground=p["card"],background=p["card"],foreground=p["fg"],insertcolor=p["fg"],bordercolor=p["border"],lightcolor=p["border"],darkcolor=p["border"],padding=6,font="WayFinderBody")
         # Highlighted text-entry style used on the run controls and check filters.
         # It keeps the field dark/readable while using the same pink/coral border/focus
         # language as WayFinder's primary action buttons.
-        style.configure("Accent.TEntry",fieldbackground=p["accent_soft"],background=p["accent_soft"],foreground=p["fg"],insertcolor=p["fg"],bordercolor=p["accent"],lightcolor=p["accent"],darkcolor=p["accent"],padding=6,font=("Segoe UI",fs))
+        style.configure("Accent.TEntry",fieldbackground=p["accent_soft"],background=p["accent_soft"],foreground=p["fg"],insertcolor=p["fg"],bordercolor=p["accent"],lightcolor=p["accent"],darkcolor=p["accent"],padding=6,font="WayFinderBody")
         style.map("Accent.TEntry",fieldbackground=[("readonly",p["accent_soft"]),("disabled",p["panel"])],foreground=[("readonly",p["fg"]),("disabled",p["muted"])],bordercolor=[("focus",p["accent_hover"]),("!focus",p["accent"])])
         style.map("TCombobox",fieldbackground=[("readonly",p["card"])],background=[("readonly",p["card"])],foreground=[("readonly",p["fg"])],selectbackground=[("readonly",p["select"])],selectforeground=[("readonly",p["fg"])],bordercolor=[("focus",p["accent"])])
         style.map("TSpinbox",fieldbackground=[("readonly",p["card"])],foreground=[("readonly",p["fg"])],bordercolor=[("focus",p["accent"])])
@@ -260,37 +342,38 @@ class AppearanceMixin:
         self.root.option_add("*TCombobox*Listbox.selectForeground", p["fg"])
 
         # Tables / notebooks / separators / progress bars.
-        style.configure("Treeview",background=p["tree"],fieldbackground=p["tree"],foreground=p["fg"],rowheight=max(29,fs*3),borderwidth=1,relief="flat",bordercolor=p["border"],font=("Segoe UI",fs))
+        style.configure("Treeview",background=p["tree"],fieldbackground=p["tree"],foreground=p["fg"],rowheight=row_height,borderwidth=1,relief="flat",bordercolor=p["border"],font="WayFinderBody")
         style.map("Treeview",background=[("selected",p["select"])],foreground=[("selected","#ffffff")])
-        style.configure("Treeview.Heading",background=p["card_alt"],foreground=p["fg"],bordercolor=p["border"],relief="flat",padding=(8,7),font=("Segoe UI Semibold",max(8,fs-1)))
+        style.configure("Treeview.Heading",background=p["card_alt"],foreground=p["fg"],bordercolor=p["border"],relief="flat",padding=(8,7),font="WayFinderSmallSemibold")
         style.map("Treeview.Heading",background=[("active",p["accent_soft"])])
-        style.configure("Emphasis.Treeview",background=p["tree"],fieldbackground=p["tree"],foreground=p["success"],rowheight=max(29,fs*3),borderwidth=1,bordercolor=p["border"],font=("Segoe UI Semibold",fs))
+        style.configure("Emphasis.Treeview",background=p["tree"],fieldbackground=p["tree"],foreground=p["success"],rowheight=row_height,borderwidth=1,bordercolor=p["border"],font="WayFinderSemibold")
         style.map("Emphasis.Treeview",background=[("selected",p["select"])],foreground=[("selected","#ffffff")])
-        style.configure("MapName.TCombobox",fieldbackground=p["card"],background=p["card"],foreground=p["success"],arrowcolor=p["fg"],bordercolor=p["border"],padding=6,font=("Segoe UI Semibold",fs))
+        style.configure("MapName.TCombobox",fieldbackground=p["card"],background=p["card"],foreground=p["success"],arrowcolor=p["fg"],bordercolor=p["border"],padding=6,font="WayFinderSemibold")
         style.map("MapName.TCombobox",fieldbackground=[("readonly",p["card"])],background=[("readonly",p["card"])],foreground=[("readonly",p["success"])],selectbackground=[("readonly",p["select"])],selectforeground=[("readonly","#ffffff")])
         style.configure("TNotebook",background=p["bg"],borderwidth=0)
-        style.configure("TNotebook.Tab",background=p["panel"],foreground=p["muted"],padding=(12,8),font=("Segoe UI",fs))
+        style.configure("TNotebook.Tab",background=p["panel"],foreground=p["muted"],padding=(12,8),font="WayFinderBody")
         style.map("TNotebook.Tab",background=[("selected",p["card_alt"]),("active",p["accent_soft"])],foreground=[("selected",p["fg"])])
         style.configure("TSeparator",background=p["border"] )
         style.configure("Horizontal.TProgressbar",troughcolor=p["panel"],background=p["accent"],bordercolor=p["border"],lightcolor=p["accent"],darkcolor=p["accent"])
 
         # KPI cards and option controls.
         style.configure("Kpi.TFrame",background=p["card"],bordercolor=p["border"],borderwidth=1,relief="solid")
-        style.configure("KpiLabel.TLabel",background=p["card"],foreground=p["muted"],font=("Segoe UI Semibold",max(8,fs-1)))
-        style.configure("KpiValue.TLabel",background=p["card"],foreground=p["fg"],font=("Segoe UI Semibold",fs+10))
+        style.configure("KpiLabel.TLabel",background=p["card"],foreground=p["muted"],font="WayFinderSmallSemibold")
+        style.configure("KpiValue.TLabel",background=p["card"],foreground=p["fg"],font="WayFinderKpi")
         style.configure("TLabelframe",background=p["bg"],bordercolor=p["border"],relief="solid")
-        style.configure("TLabelframe.Label",background=p["bg"],foreground=p["muted"],font=("Segoe UI Semibold",fs))
-        style.configure("TCheckbutton",background=p["bg"],foreground=p["fg"],font=("Segoe UI",fs))
+        style.configure("TLabelframe.Label",background=p["bg"],foreground=p["muted"],font="WayFinderSemibold")
+        style.configure("TCheckbutton",background=p["bg"],foreground=p["fg"],font="WayFinderBody")
         style.map("TCheckbutton",background=[("active",p["bg"])],foreground=[("disabled",p["muted"]),("!disabled",p["fg"])])
-        style.configure("TRadiobutton",background=p["bg"],foreground=p["fg"],font=("Segoe UI",fs))
-        style.configure("Card.TCheckbutton",background=p["card"],foreground=p["fg"],font=("Segoe UI",fs),padding=(2,2))
+        style.configure("TRadiobutton",background=p["bg"],foreground=p["fg"],font="WayFinderBody")
+        style.configure("Card.TCheckbutton",background=p["card"],foreground=p["fg"],font="WayFinderBody",padding=(2,2))
         style.map("Card.TCheckbutton",background=[("active",p["card"]),("!disabled",p["card"])],foreground=[("!disabled",p["fg"])])
-        style.configure("CardAlt.TCheckbutton",background=p["card_alt"],foreground=p["fg"],font=("Segoe UI",fs),padding=(2,2))
+        style.configure("CardAlt.TCheckbutton",background=p["card_alt"],foreground=p["fg"],font="WayFinderBody",padding=(2,2))
         style.map("CardAlt.TCheckbutton",background=[("active",p["card_alt"]),("!disabled",p["card_alt"])],foreground=[("disabled",p["muted"]),("!disabled",p["fg"])])
 
         # Classic Tk widgets and native-style menus cannot inherit ttk rules.
-        self.root.option_add("*Font", ("Segoe UI", fs))
-        self.root.option_add("*Menu.font", ("Segoe UI", fs))
+        # Pointing them at the named font keeps them live when the size changes.
+        self.root.option_add("*Font", "WayFinderBody")
+        self.root.option_add("*Menu.font", "WayFinderBody")
         self.root.option_add("*Menu.background", p["panel"])
         self.root.option_add("*Menu.foreground", p["fg"])
         self.root.option_add("*Menu.activeBackground", p["select"])
@@ -369,9 +452,26 @@ class AppearanceMixin:
         messagebox.showwarning = lambda title, message, **kw: themed_dialog(title, message, kind="warning", **kw)
         messagebox.showerror = lambda title, message, **kw: themed_dialog(title, message, kind="error", **kw)
         messagebox.askyesno = lambda title, message, **kw: themed_dialog(title, message, kind="question", question=True, **kw)
+    def _tree_row_height(self, fs):
+        """Row height that fits the body font, measured from the real font metrics."""
+        try:
+            return max(29, int(tkfont.nametofont("WayFinderBody", root=self.root).metrics("linespace")) + 12)
+        except (tk.TclError, RuntimeError, ValueError):
+            return max(29, fs * 3)
     def _apply_scaling(self):
-        """Apply the received scaling update to local GUI state and dependent widgets."""
-        try: self.root.tk.call("tk","scaling",max(0.8,min(1.8,self.font_size.get()/10)))
+        """Keep Tk's native DPI scaling in place.
+
+        Text size is controlled entirely by the named fonts.  An earlier version
+        forced ``tk scaling`` to ``font_size / 10``, which overrode the monitor's
+        DPI ratio: on a 96 DPI display a 10 pt font rendered at 10 px instead of
+        13 px, and on high-DPI displays everything shrank further.  Restoring the
+        value Tk computed at startup lets point sizes mean what they mean elsewhere
+        on the desktop.
+        """
+        try:
+            if getattr(self, "_native_tk_scaling", None) is None:
+                self._native_tk_scaling = float(self.root.tk.call("tk", "scaling"))
+            self.root.tk.call("tk", "scaling", self._native_tk_scaling)
         except Exception: _ignored("intentional best-effort fallback")
     def _build_menu(self):
         """Native menu for WayFinder text sizing. WayFinder Dark is the fixed theme."""
@@ -382,13 +482,13 @@ class AppearanceMixin:
         # Variable(s): `font_menu` (font menu); named state retained for the surrounding calculation or subsequent calls.
         font_menu = tk.Menu(view, tearoff=False)
         # Loop variable(s): `size` (size); each iteration represents the next value from the iterable below.
-        for size in range(8, 17):
+        for size in range(FONT_SIZE_MIN, FONT_SIZE_MAX + 1):
             font_menu.add_radiobutton(label=f"{size} pt", variable=self.font_size, value=size, command=self._refresh_theme)
-        view.add_cascade(label="Font size", menu=font_menu)
+        view.add_cascade(label="Text size", menu=font_menu)
         view.add_separator()
-        view.add_command(label="Smaller font", accelerator="Ctrl+-", command=lambda:self._adjust_font(-1))
-        view.add_command(label="Reset font", accelerator="Ctrl+0", command=self._reset_font)
-        view.add_command(label="Larger font", accelerator="Ctrl++", command=lambda:self._adjust_font(1))
+        view.add_command(label="Smaller text", accelerator="Ctrl+-", command=lambda:self._adjust_font(-1))
+        view.add_command(label="Reset text size", accelerator="Ctrl+0", command=self._reset_font)
+        view.add_command(label="Larger text", accelerator="Ctrl++", command=lambda:self._adjust_font(1))
         menubar.add_cascade(label="View", menu=view)
         self.root.configure(menu=menubar)
         self.root.bind_all("<Control-minus>", lambda _e:self._adjust_font(-1))
@@ -399,14 +499,19 @@ class AppearanceMixin:
         self.root.bind_all("<Control-KP_Add>", lambda _e:self._adjust_font(1))
     def _adjust_font(self, delta):
         """Internal helper for adjust font; kept private so callers use the higher-level component API."""
-        self.font_size.set(max(8, min(16, int(self.font_size.get()) + delta)))
+        self.font_size.set(clamp_font_size(int(self.font_size.get()) + delta))
         self._refresh_theme()
     def _reset_font(self):
         """Internal helper for reset font; kept private so callers use the higher-level component API."""
-        self.font_size.set(10)
+        self.font_size.set(FONT_SIZE_DEFAULT)
         self._refresh_theme()
     def _refresh_theme(self):
-        """Reconfigure widget styling after the selected theme changes."""
+        """Reconfigure widget styling after the text size changes.
+
+        Fonts themselves are named Tk fonts resized inside ``_configure_style``,
+        so every label, tree row, console, tooltip and canvas label follows
+        automatically; only canvases that lay text out by hand need redrawing.
+        """
         # Variable(s): `p` (p); named state retained for the surrounding calculation or subsequent calls.
         self._configure_style(); self._apply_scaling(); p=self._palette()
         # Loop variable(s): `name` (name); each iteration represents the next value from the iterable below.
@@ -415,9 +520,9 @@ class AppearanceMixin:
         if hasattr(self,"sidebar_canvas"): self.sidebar_canvas.configure(bg=p.get("sidebar",p["panel"]))
         if hasattr(self,"map_canvas"): self.map_canvas.configure(bg=p["panel"])
         if hasattr(self,"log_text"):
-            self.log_text.configure(bg=p["panel"],fg=p["fg"],insertbackground=p["fg"],font=("Segoe UI",self.font_size.get()),highlightbackground=p["border"],highlightcolor=p["accent"])
+            self.log_text.configure(bg=p["panel"],fg=p["fg"],insertbackground=p["fg"],font="WayFinderBody",highlightbackground=p["border"],highlightcolor=p["accent"])
             self._configure_log_tags(self.log_text)
         if hasattr(self,"ap_log_text"):
-            self.ap_log_text.configure(bg=p["panel"],fg=p["fg"],insertbackground=p["fg"],font=("Segoe UI",self.font_size.get()),highlightbackground=p["border"],highlightcolor=p["accent"])
+            self.ap_log_text.configure(bg=p["panel"],fg=p["fg"],insertbackground=p["fg"],font="WayFinderBody",highlightbackground=p["border"],highlightcolor=p["accent"])
             self._configure_log_tags(self.ap_log_text)
         self._draw_graph()

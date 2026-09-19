@@ -200,7 +200,7 @@ class DiagnosticsPageMixin:
         self._refresh_component_diagnostics()
         console_card=ttk.Frame(p,style="Card.TFrame",padding=8); console_card.pack(fill="both",expand=True)
         ttk.Label(console_card,text="DIAGNOSTIC CONSOLE",style="CardTitle.TLabel").pack(anchor="w",pady=(0,6))
-        self.log_text=tk.Text(console_card,bg=self._palette()["panel"],fg=self._palette()["fg"],insertbackground=self._palette()["fg"],relief="flat",wrap="word",font=("Segoe UI",self.font_size.get()),highlightthickness=1,highlightbackground=self._palette()["accent"],highlightcolor=self._palette()["accent_hover"],padx=8,pady=8)
+        self.log_text=tk.Text(console_card,bg=self._palette()["panel"],fg=self._palette()["fg"],insertbackground=self._palette()["fg"],relief="flat",wrap="word",font="WayFinderBody",highlightthickness=1,highlightbackground=self._palette()["accent"],highlightcolor=self._palette()["accent_hover"],padx=8,pady=8)
         self.log_text.pack(fill="both",expand=True)
         self._configure_log_tags(self.log_text)
         self.log_text.configure(state="disabled")

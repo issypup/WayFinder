@@ -587,7 +587,7 @@ class PathPageMixin:
         x1=left; x2=min(left+box_w,right)
         node_fill=p["accent_soft"] if is_group else p["card_alt"]
         canvas.create_rectangle(x1,y1,x2,y2,fill=node_fill,outline=color,width=2,tags=tags)
-        canvas.create_text((x1+x2)/2,cy,text=self._rule_node_caption(node),fill=p["fg"],font=("Segoe UI Semibold",max(9,self.font_size.get() if is_group else self.font_size.get()-1)),width=max(100,x2-x1-12),justify="center",tags=tags)
+        canvas.create_text((x1+x2)/2,cy,text=self._rule_node_caption(node),fill=p["fg"],font=("WayFinderSemibold" if is_group else "WayFinderSmallSemibold"),width=max(100,x2-x1-12),justify="center",tags=tags)
         if is_group:
             marker_r=5
             canvas.create_oval(x2-marker_r-7,y1+7,x2+marker_r-7,y1+7+marker_r*2,fill=state_color,outline="",tags=tags)
@@ -638,7 +638,7 @@ class PathPageMixin:
         # Variable(s): `c` (c); named state retained for the surrounding calculation or subsequent calls.
         c=self.graph_canvas;c.delete("all"); result=self.current_path
         if not result or not result.found:
-            c.create_text(30,30,anchor="nw",text="No path loaded.",fill=self._palette()["muted"],font=("Segoe UI",self.font_size.get()));return
+            c.create_text(30,30,anchor="nw",text="No path loaded.",fill=self._palette()["muted"],font="WayFinderBody");return
         # Variable(s): `width` (width); named state retained for the surrounding calculation or subsequent calls.
         width=max(c.winfo_width(),760); cx=width//2; y=35; box_w=min(760,width-70)
         # Variable(s): `prev_bottom` (prev bottom); named state retained for the surrounding calculation or subsequent calls.
@@ -663,10 +663,10 @@ class PathPageMixin:
             c.create_rectangle(x1,y1,x2,y2,fill=self._palette()["card"],outline=color,width=5 if highlight else 2,tags=(tag,))
             # Variable(s): `title` (title); named state retained for the surrounding calculation or subsequent calls.
             title=("✓  " if step.reachable is True else "✕  " if step.reachable is False else "•  ")+step.title
-            c.create_text(cx,y+20,text=title,fill=self._palette()["fg"],font=("Segoe UI Semibold",self.font_size.get()),width=box_w-30,tags=(tag,))
+            c.create_text(cx,y+20,text=title,fill=self._palette()["fg"],font="WayFinderSemibold",width=box_w-30,tags=(tag,))
             # Variable(s): `region` (region); named state retained for the surrounding calculation or subsequent calls.
             region=step.target_region or step.source_region
-            c.create_text(cx,y+44,text=region or step.kind,fill=self._palette()["muted"],font=("Segoe UI",max(8,self.font_size.get()-1)),tags=(tag,))
+            c.create_text(cx,y+44,text=region or step.kind,fill=self._palette()["muted"],font="WayFinderSmall",tags=(tag,))
             if tree:
                 self._draw_rule_diagram(c,tree,x1+26,y+66,x2-26,tags=(tag,))
             # Variable(s): `prev_bottom` (prev bottom); named state retained for the surrounding calculation or subsequent calls.
@@ -695,7 +695,7 @@ class PathPageMixin:
             # Variable(s): `h` (height/handle value (context dependent)); named state retained for the surrounding calculation or subsequent calls.
             h=max(120,self._rule_diagram_height(tree)+30); self._draw_rule_diagram(canvas,tree,24,20,1220); canvas.configure(scrollregion=(0,0,1260,h))
         else:
-            canvas.create_text(24,24,anchor="nw",text="No structured rule details.",fill=p["muted"],font=("Segoe UI",self.font_size.get()))
+            canvas.create_text(24,24,anchor="nw",text="No structured rule details.",fill=p["muted"],font="WayFinderBody")
             canvas.configure(scrollregion=(0,0,850,100))
 
     def _render_rule_node(self,parent,node:RuleNode,depth:int):
@@ -715,7 +715,7 @@ class PathPageMixin:
         kind=(node.kind or "RULE").upper(); symbol="✓" if node.satisfied is True else ("✕" if node.satisfied is False else "•")
         # Variable(s): `label` (label); named state retained for the surrounding calculation or subsequent calls.
         label=f"{symbol} {kind}: {node.label}"+(f"   {node.detail}" if node.detail else "")
-        ttk.Label(parent,text=label,style="CardTitle.TLabel",font=("Segoe UI",max(8,self.font_size.get()-1)),wraplength=920,justify="left").pack(anchor="w",padx=(depth*12,0),pady=1)
+        ttk.Label(parent,text=label,style="CardTitle.TLabel",font="WayFinderSmall",wraplength=920,justify="left").pack(anchor="w",padx=(depth*12,0),pady=1)
         # Loop variable(s): `ch` (ch); each iteration represents the next value from the iterable below.
         for ch in node.children:self._render_rule_node(parent,ch,depth+1)
 

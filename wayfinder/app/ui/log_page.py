@@ -100,7 +100,7 @@ class LogPageMixin:
         self.ap_log_text=tk.Text(
             wrap,bg=self._palette()["panel"],fg=self._palette()["fg"],
             insertbackground=self._palette()["fg"],relief="flat",wrap="word",
-            font=("Segoe UI",self.font_size.get()),highlightthickness=1,
+            font="WayFinderBody",highlightthickness=1,
             highlightbackground=self._palette()["accent"],highlightcolor=self._palette()["accent_hover"],padx=8,pady=8
         )
         self._configure_log_tags(self.ap_log_text)

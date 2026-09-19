@@ -103,7 +103,7 @@ class MapPageMixin(
             tile.grid(row=index//4,column=index%4,sticky="ew",padx=(0 if index%4==0 else 4,0),pady=(0 if index<4 else 5,0))
             tk.Label(
                 tile,text="●",fg=color,bg=palette["card_alt"],
-                font=("Segoe UI Semibold",12),borderwidth=0,
+                font="WayFinderLegendDot",borderwidth=0,
             ).pack(side="left",padx=(0,4))
             ttk.Checkbutton(
                 tile,text=label,style="CardAlt.TCheckbutton",
@@ -336,7 +336,7 @@ class MapPageMixin(
         counts,total=self._current_map_status_counts()
         if total <= 0:
             canvas.create_rectangle(0,0,width,height,fill=self._palette()["card"],outline="")
-            canvas.create_text(width/2,height/2,text="No generated checks on this map",fill=self._palette()["muted"],font=("Segoe UI",9))
+            canvas.create_text(width/2,height/2,text="No generated checks on this map",fill=self._palette()["muted"],font="WayFinderSmall")
             return
 
         colors={

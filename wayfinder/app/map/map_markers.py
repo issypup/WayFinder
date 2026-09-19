@@ -46,8 +46,8 @@ class MapMarkersMixin:
             )
             oval=self.map_canvas.create_oval(0,0,0,0,fill="#7f91a3",outline="#ffffff",width=1,tags=(tag,"marker"))
             progress=self.map_canvas.create_arc(0,0,0,0,start=90,extent=0,style="arc",outline="#e4c0ca",width=3,state="hidden",tags=(tag,"marker","marker_progress"))
-            completion=self.map_canvas.create_text(0,0,text="",anchor="center",fill="#ffffff",font=("Segoe UI",max(7,int(self.font_size.get())-2),"bold"),state="hidden",tags=(tag,"marker","marker_completion"))
-            label=self.map_canvas.create_text(0,0,text=self._map_display_name(m.location_name),anchor="w",fill=self._palette()["success"],font=("Segoe UI Semibold",max(7,int(self.font_size.get())-1)),tags=(tag,"marker","marker_label"))
+            completion=self.map_canvas.create_text(0,0,text="",anchor="center",fill="#ffffff",font="WayFinderMarkerCount",state="hidden",tags=(tag,"marker","marker_completion"))
+            label=self.map_canvas.create_text(0,0,text=self._map_display_name(m.location_name),anchor="w",fill=self._palette()["success"],font="WayFinderMarkerLabel",tags=(tag,"marker","marker_label"))
             self.map_canvas.tag_bind(tag,"<ButtonRelease-1>",lambda e,marker=m:self._map_marker_click(e,marker))
             self.map_canvas.tag_bind(tag,"<Double-Button-1>",lambda e,marker=m:self._map_marker_double_click(e,marker))
             self.map_canvas.tag_bind(tag,"<Button-3>",lambda e,marker=m:self._map_marker_context_menu(e,marker.member_names[0] if marker.member_names else marker.location_name))
@@ -195,7 +195,7 @@ class MapMarkersMixin:
         tip.wm_overrideredirect(True)
         try: tip.wm_attributes("-topmost",True)
         except tk.TclError: _ignored("intentional best-effort fallback")
-        tk.Label(tip,text=text,justify="left",anchor="w",background=self._palette()["card"],foreground=self._palette()["fg"],relief="solid",borderwidth=1,padx=8,pady=6,font=("Segoe UI",max(8,int(self.font_size.get())-1)),highlightbackground=self._palette()["border"]).pack()
+        tk.Label(tip,text=text,justify="left",anchor="w",background=self._palette()["card"],foreground=self._palette()["fg"],relief="solid",borderwidth=1,padx=8,pady=6,font="WayFinderSmall",highlightbackground=self._palette()["border"]).pack()
         tip.geometry(f"+{event.x_root+14}+{event.y_root+14}")
 
     def _map_marker_enter(self,event,marker):
@@ -346,7 +346,7 @@ class MapMarkersMixin:
         # Variable(s): `border` (border); named state retained for the surrounding calculation or subsequent calls.
         border=max(1,int(md.location_border_thickness))
         # Variable(s): `label_font` (label font); named state retained for the surrounding calculation or subsequent calls.
-        label_font=("Segoe UI Semibold",max(7,int(self.font_size.get())-1))
+        label_font="WayFinderMarkerLabel"
         hidden_members=self._map_hidden_members(md)
         # Loop variable(s): `idx` (index), `m` (m); each iteration represents the next value from the iterable below.
         for idx,m in enumerate(markers):
@@ -466,7 +466,7 @@ class MapMarkersMixin:
                     self.map_canvas.coords(progress,x-progress_r,y-progress_r,x+progress_r,y+progress_r)
                     self.map_canvas.itemconfigure(progress,extent=(-360.0*checked_count/group_total),outline="#e4c0ca",width=max(2,border+2),state=("normal" if visible and 0 < checked_count < group_total else "hidden"))
                     self.map_canvas.coords(completion,x,y)
-                    self.map_canvas.itemconfigure(completion,text=f"{checked_count}/{group_total}",font=("Segoe UI",max(7,int(self.font_size.get())-2),"bold"),state=("normal" if visible else "hidden"))
+                    self.map_canvas.itemconfigure(completion,text=f"{checked_count}/{group_total}",font="WayFinderMarkerCount",state=("normal" if visible else "hidden"))
                 else:
                     self.map_canvas.itemconfigure(progress,state="hidden")
                     self.map_canvas.itemconfigure(completion,state="hidden")

@@ -10,4 +10,4 @@ def test_checks_and_map_names_use_hint_emphasis_palette():
     assert 'style="Emphasis.Treeview"' in source
     assert 'style="MapName.TCombobox"' in source
     assert 'fill=self._palette()["success"]' in source
-    assert 'label_font=("Segoe UI Semibold"' in source
+    assert 'label_font="WayFinderMarkerLabel"' in source

@@ -314,7 +314,7 @@ class LogicToolsMixin:
         tree_scroll.pack(side="right", fill="y")
         value_tree.configure(yscrollcommand=tree_scroll.set)
 
-        raw_text = tk.Text(raw_frame, wrap="none", bg=self._palette()["panel"], fg=self._palette()["fg"], insertbackground=self._palette()["fg"], font=("Segoe UI",self.font_size.get()), relief="flat", highlightthickness=1, highlightbackground=self._palette()["border"], highlightcolor=self._palette()["accent"], padx=8, pady=8)
+        raw_text = tk.Text(raw_frame, wrap="none", bg=self._palette()["panel"], fg=self._palette()["fg"], insertbackground=self._palette()["fg"], font="WayFinderBody", relief="flat", highlightthickness=1, highlightbackground=self._palette()["border"], highlightcolor=self._palette()["accent"], padx=8, pady=8)
         raw_text.pack(side="left", fill="both", expand=True)
         raw_y = ttk.Scrollbar(raw_frame, orient="vertical", command=raw_text.yview)
         raw_y.pack(side="right", fill="y")

@@ -185,7 +185,7 @@ class ShellMixin:
         self.content=ttk.Frame(body); self.content.pack(side="left",fill="both",expand=True,padx=(0,18),pady=(14,14)); self.pages={}; self.page_canvases={}
         brand=ttk.Frame(self.sidebar,style="Sidebar.TFrame")
         brand.pack(fill="x",padx=14,pady=(17,12))
-        ttk.Label(brand,text="WAYFINDER",style="Sidebar.TLabel",font=("Segoe UI Semibold",self.font_size.get()+5)).pack(anchor="w")
+        ttk.Label(brand,text="WAYFINDER",style="Sidebar.TLabel",font="WayFinderBrand").pack(anchor="w")
         ttk.Label(brand,text="Logic-aware tracker",style="Sidebar.TLabel",foreground=self._palette()["muted"]).pack(anchor="w",pady=(1,0))
         ttk.Separator(self.sidebar).pack(fill="x",padx=12,pady=(0,8))
         ttk.Label(self.sidebar,text="NAVIGATION",style="Section.TLabel").pack(anchor="w",padx=14,pady=(5,6))
@@ -217,7 +217,9 @@ class ShellMixin:
     def _build_topbar(self):
         """Construct connection controls and the tracker topbar."""
         # Variable(s): `top` (top); named state retained for the surrounding calculation or subsequent calls.
-        top=ttk.Frame(self.root,style="Panel.TFrame",height=42); top.pack(fill="x"); top.pack_propagate(False)
+        # The bar sizes itself to its text so large accessibility text sizes
+        # are never clipped by a fixed pixel height.
+        top=ttk.Frame(self.root,style="Panel.TFrame"); top.pack(fill="x")
         # Variable(s): `title_row` (title row); named state retained for the surrounding calculation or subsequent calls.
         title_row=ttk.Frame(top,style="Panel.TFrame"); title_row.pack(fill="x")
         ttk.Label(title_row,text="◉  WayFinder — Native Logic Tracker",style="PanelTitle.TLabel").pack(side="left",padx=14,pady=(9,6))

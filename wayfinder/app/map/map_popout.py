@@ -55,7 +55,7 @@ class MapPopoutMixin:
         legend_items=ttk.Frame(legend,style="Card.TFrame"); legend_items.pack(fill="x")
         for key,label,color in (("reachable","Reachable","#35b979"),("glitched","Glitch-only","#b34bd6"),("out_of_logic","Out of logic","#e05252"),("checked","Checked","#8c9499"),("ignored","Ignored","#d39a45"),("unknown","Unknown / Untracked","#7f91a3")):
             row=ttk.Frame(legend_items,style="Card.TFrame"); row.pack(side="left",padx=(0,10))
-            tk.Label(row,text="●",fg=color,bg=palette["card"],font=("Segoe UI Semibold",12)).pack(side="left",padx=(0,2))
+            tk.Label(row,text="●",fg=color,bg=palette["card"],font="WayFinderLegendDot").pack(side="left",padx=(0,2))
             ttk.Checkbutton(row,text=label,style="Card.TCheckbutton",variable=self.map_status_visible[key],command=self._map_option_changed).pack(side="left")
         opts=ttk.Frame(controls,style="Card.TFrame",padding=(10,8)); opts.pack(side="right",padx=(8,0))
         ttk.Label(opts,text="MAP OPTIONS",style="CardTitle.TLabel").grid(row=0,column=0,columnspan=3,sticky="w",pady=(0,5))
@@ -157,7 +157,7 @@ class MapPopoutMixin:
             if not statuses:continue
             x,y=popout_positions.get(marker_index,(marker.x*factor,marker.y*factor)); status=statuses[0]
             canvas.create_oval(x-r,y-r,x+r,y+r,fill=status_palette.get(status,"#7f91a3"),outline="#ffffff",width=2,tags=("marker",))
-            if self.map_show_labels.get(): canvas.create_text(x+r+6,y,text=self._map_display_name(marker.location_name),anchor="w",fill=ui_palette["success"],font=("Segoe UI Semibold",max(7,int(self.font_size.get())-1)),tags=("marker_label",))
+            if self.map_show_labels.get(): canvas.create_text(x+r+6,y,text=self._map_display_name(marker.location_name),anchor="w",fill=ui_palette["success"],font="WayFinderMarkerLabel",tags=("marker_label",))
         if self._map_popout_status is not None:self._map_popout_status.set(self.map_status.get())
         if self._map_popout_location_counter is not None:self._map_popout_location_counter.set(f"Locations: {shown} / {total} visible")
         if self._map_popout_progress_detail is not None:self._map_popout_progress_detail.set(self.map_area_progress_detail.get())

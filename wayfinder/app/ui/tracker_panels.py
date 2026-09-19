@@ -92,7 +92,7 @@ class TrackerPanelsMixin:
         # Loop variable(s): `c` (c), `w` (width/widget value (context dependent)); each iteration represents the next value from the iterable below.
         for c,w in [("Item",530),("Count",90),("Type",280)]: self.inv_tree.heading(c,text=c); self.inv_tree.column(c,width=w,anchor="w")
         self.inv_tree.pack(fill="both",expand=True); self.inv_tree.bind("<Double-1>",lambda _e:self._show_item_unlock())
-        self.inv_tree.tag_configure("recent_item", foreground=self._palette()["success"], font=("Segoe UI Semibold", self.font_size.get()))
+        self.inv_tree.tag_configure("recent_item", foreground=self._palette()["success"], font="WayFinderSemibold")
         ToolTip(mode,"Progression items are items classified as logic-relevant by the connected APWorld. Event and Manual items are shown separately.")
     def _show_item_unlock(self):
         """Handle show item unlock."""
