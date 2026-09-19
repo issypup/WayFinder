@@ -157,7 +157,7 @@ class HintsPageMixin:
         self.hint_tree=ttk.Treeview(hints,columns=("Item","Player","Location","Finder","Status"),show="headings")
         # Loop variable(s): `c` (c), `w` (width/widget value (context dependent)); each iteration represents the next value from the iterable below.
         for c,w in [("Item",250),("Player",170),("Location",300),("Finder",170),("Status",110)]: self.hint_tree.heading(c,text=c); self.hint_tree.column(c,width=w,anchor="w")
-        self.hint_tree.pack(fill="both",expand=True,padx=8,pady=(0,8)); self.hint_tree.bind("<Double-1>",self._hint_open_path); self.hint_tree.bind("<Button-3>",self._hint_context_menu); self.hint_tree.tag_configure("new_hint",foreground=self._palette()["success"],font=("Segoe UI Semibold",self.font_size.get())); self.hint_tree.tag_configure("changed_hint",foreground=self._palette()["warning"])
+        self.hint_tree.pack(fill="both",expand=True,padx=8,pady=(0,8)); self.hint_tree.bind("<Double-1>",self._hint_open_path); self.hint_tree.bind("<Button-3>",self._hint_context_menu); self.hint_tree.tag_configure("new_hint",foreground=self._palette()["success"],font="WayFinderSemibold"); self.hint_tree.tag_configure("changed_hint",foreground=self._palette()["warning"])
         self.hint_detail=tk.StringVar(value="Select a hint to see its details."); ttk.Label(hints,textvariable=self.hint_detail,style="Muted.TLabel",wraplength=980).pack(anchor="w",padx=8,pady=(0,8)); self.hint_tree.bind("<<TreeviewSelect>>",self._hint_selected)
 
         # Variable(s): `ir` (ir); named state retained for the surrounding calculation or subsequent calls.
@@ -169,7 +169,7 @@ class HintsPageMixin:
         self.shi_inv_tree=ttk.Treeview(inv,columns=("Item","Count","Type","Source Player","Source Location"),show="headings")
         # Loop variable(s): `c` (c), `w` (width/widget value (context dependent)); each iteration represents the next value from the iterable below.
         for c,w in [("Item",260),("Count",70),("Type",150),("Source Player",180),("Source Location",320)]: self.shi_inv_tree.heading(c,text=c); self.shi_inv_tree.column(c,width=w,anchor="w")
-        self.shi_inv_tree.pack(fill="both",expand=True,padx=8,pady=(0,8)); self.shi_inv_tree.tag_configure("recent_item",foreground=self._palette()["success"],font=("Segoe UI Semibold",self.font_size.get()))
+        self.shi_inv_tree.pack(fill="both",expand=True,padx=8,pady=(0,8)); self.shi_inv_tree.tag_configure("recent_item",foreground=self._palette()["success"],font="WayFinderSemibold")
         self._hint_seen_keys=set(); self._hint_last_status={}; self._hint_recent_until={}; self._hint_changed_until={}
 
     def _refresh_hints(self):
@@ -227,7 +227,7 @@ class HintsPageMixin:
     def _personal_note(self,name):
         # Variable(s): `top` (top); named state retained for the surrounding calculation or subsequent calls.
         """Handle personal note."""
-        top=tk.Toplevel(self.root); top.configure(bg=self._palette()["bg"]); top.title(f"Note — {name}"); top.transient(self.root); shell=ttk.Frame(top,style="Card.TFrame",padding=12); shell.pack(fill="both",expand=True,padx=10,pady=10); ttk.Label(shell,text="LOCATION NOTE",style="CardTitle.TLabel").pack(anchor="w"); ttk.Label(shell,text=name,style="CardHeading.TLabel").pack(anchor="w",pady=(2,8)); text=tk.Text(shell,width=60,height=8,bg=self._palette()["panel"],fg=self._palette()["fg"],insertbackground=self._palette()["fg"],font=("Segoe UI",self.font_size.get()),relief="flat",highlightthickness=1,highlightbackground=self._palette()["accent"],highlightcolor=self._palette()["accent_hover"],padx=8,pady=8); text.pack(fill="both",expand=True); notes=self.settings.setdefault("location_notes",{}); text.insert("1.0",str(notes.get(name,"")))
+        top=tk.Toplevel(self.root); top.configure(bg=self._palette()["bg"]); top.title(f"Note — {name}"); top.transient(self.root); shell=ttk.Frame(top,style="Card.TFrame",padding=12); shell.pack(fill="both",expand=True,padx=10,pady=10); ttk.Label(shell,text="LOCATION NOTE",style="CardTitle.TLabel").pack(anchor="w"); ttk.Label(shell,text=name,style="CardHeading.TLabel").pack(anchor="w",pady=(2,8)); text=tk.Text(shell,width=60,height=8,bg=self._palette()["panel"],fg=self._palette()["fg"],insertbackground=self._palette()["fg"],font="WayFinderBody",relief="flat",highlightthickness=1,highlightbackground=self._palette()["accent"],highlightcolor=self._palette()["accent_hover"],padx=8,pady=8); text.pack(fill="both",expand=True); notes=self.settings.setdefault("location_notes",{}); text.insert("1.0",str(notes.get(name,"")))
         # /**
         #  * Function: save
         #  * Purpose: Perform the save operation while keeping the surrounding subsystem state consistent.

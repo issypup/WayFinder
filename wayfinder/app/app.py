@@ -175,7 +175,7 @@ class ToolTip:
 
 # Page/controller mixins keep WayFinderApp state ownership intact while separating
 # UI construction, runtime orchestration, and feature-specific callbacks.
-from wayfinder.app.ui.appearance import AppearanceMixin
+from wayfinder.app.ui.appearance import AppearanceMixin, clamp_font_size
 from wayfinder.app.ui.shell import ShellMixin
 from wayfinder.app.ui.search_ui import SearchUiMixin
 from wayfinder.app.map.map_pack_manager import MapPackManagerMixin
@@ -391,7 +391,7 @@ class WayFinderApp(
         self._last_pack_validation_report = "No map-pack validation has run this session."
         self.map_highlight_search = tk.BooleanVar(value=bool(self.settings.get("map_highlight_search", True)))
         self.map_marker_size = tk.StringVar(value=str(self.settings.get("map_marker_size", "Medium")))
-        self.theme = tk.StringVar(value="WayFinder Dark"); self.font_size = tk.IntVar(value=int(self.settings.get("font_size", 10)))
+        self.theme = tk.StringVar(value="WayFinder Dark"); self.font_size = tk.IntVar(value=clamp_font_size(self.settings.get("font_size", 10)))
         self.check_mode = tk.StringVar(value=self.settings.get("check_mode", "All"))
         self.check_area = tk.StringVar(value=self.settings.get("check_area", "All areas"))
         self.check_unchecked_only = tk.BooleanVar(value=bool(self.settings.get("check_unchecked_only", False)))

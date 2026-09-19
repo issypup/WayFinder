@@ -454,7 +454,7 @@ class SetupControllerMixin:
             highlightcolor=self._palette()["accent"],
             padx=10,
             pady=10,
-            font=("Consolas", max(9, self.font_size.get() - 1)),
+            font="WayFinderMono",
         )
         details_box.pack(side="left", fill="both", expand=True)
         scrollbar.configure(command=details_box.yview)

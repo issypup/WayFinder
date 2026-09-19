@@ -132,7 +132,7 @@ class MapInteractionsMixin:
         # Variable(s): `body` (body); named state retained for the surrounding calculation or subsequent calls.
         body=ttk.Frame(outer,style="Card.TFrame"); body.pack(fill="both",expand=True)
         # Variable(s): `lb` (lb); named state retained for the surrounding calculation or subsequent calls.
-        lb=tk.Listbox(body,activestyle="dotbox",exportselection=False,font=("Segoe UI",self.font_size.get()),bg=self._palette()["panel"],fg=self._palette()["fg"],selectbackground=self._palette()["select"],selectforeground=self._palette()["fg"],highlightthickness=1,highlightbackground=self._palette()["accent"],highlightcolor=self._palette()["accent_hover"],relief="flat")
+        lb=tk.Listbox(body,activestyle="dotbox",exportselection=False,font="WayFinderBody",bg=self._palette()["panel"],fg=self._palette()["fg"],selectbackground=self._palette()["select"],selectforeground=self._palette()["fg"],highlightthickness=1,highlightbackground=self._palette()["accent"],highlightcolor=self._palette()["accent_hover"],relief="flat")
         # Variable(s): `sy` (sy); named state retained for the surrounding calculation or subsequent calls.
         sy=ttk.Scrollbar(body,orient="vertical",command=lb.yview); lb.configure(yscrollcommand=sy.set)
         sy.pack(side="right",fill="y"); lb.pack(side="left",fill="both",expand=True)
