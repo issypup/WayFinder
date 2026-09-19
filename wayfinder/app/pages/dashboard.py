@@ -436,6 +436,13 @@ class DashboardPageMixin:
             cache_duration=float(view.get("reconstruction_duration",0.0) or 0.0)
             details.append(("APWorld reconstruction: Loaded from seed cache" if view.get("cache_hit") else "APWorld reconstruction: Built from APWorld") + (f" {cache_duration:.2f}s" if cache_duration else ""))
         if view.get("logic_source"): details.append(f"Logic source: {view['logic_source']}")
+        managed_deps=view.get("managed_dependency_count", complete.get("managed_dependency_count"))
+        declared_deps=view.get("dependency_count", complete.get("dependency_count"))
+        if isinstance(managed_deps,(int,float)):
+            dep_text=f"Dependencies: {int(managed_deps)} managed package{'s' if int(managed_deps) != 1 else ''} available"
+            if isinstance(declared_deps,(int,float)) and int(declared_deps):
+                dep_text += f" • {int(declared_deps)} APWorld requirement{'s' if int(declared_deps) != 1 else ''} verified"
+            details.append(dep_text)
         if complete.get("map_cache"): details.append(f"Map image: {complete['map_cache']}")
         self.preparation_detail.set(" • ".join(details))
         self._update_dashboard_lifecycle()

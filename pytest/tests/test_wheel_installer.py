@@ -305,3 +305,18 @@ def test_malformed_hash_option_is_not_silently_removed(tmp_path):
     path.write_text('alpha==1.0 --hash=sha256:invalid')
     with pytest.raises(InstallError, match='Invalid or unsupported requirement'):
         read_requirements(path)
+
+
+def test_cumulative_install_reuses_unchanged_wheels(tmp_path, monkeypatch):
+    """Later requirement units must not rewrite wheels already installed this run."""
+    ins, _ = installer(tmp_path, monkeypatch, [wheel('alpha'), wheel('beta')])
+    messages = []
+    ins.progress = messages.append
+    ins.install([Requirement('alpha')])
+    messages.clear()
+    ins.install([Requirement('beta')])
+    assert 'Reusing alpha 1.0' in messages
+    assert 'Installing beta 1.0' in messages
+    assert 'Installing alpha 1.0' not in messages
+    assert (ins.target / 'alpha/__init__.py').exists()
+    assert (ins.target / 'beta/__init__.py').exists()

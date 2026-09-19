@@ -195,6 +195,19 @@ class SetupPageMixin:
 
 
 
+    def _open_setup_stage(self, stage):
+        """Open WayFinder Setup directly at a guided setup stage."""
+        stage = max(1, min(7, int(stage)))
+        # A missing prerequisite means setup is no longer complete. Re-enter the
+        # guided view so the requested stage is visible rather than maintenance.
+        if bool(self.settings.get("wayfinder.setup_wizard_complete", False)):
+            self.settings["wayfinder.setup_wizard_complete"] = False
+            self._save_settings()
+        self.setup_wizard_stage.set(stage)
+        self.setup_show_advanced.set(False)
+        self.show_page("WayFinder Setup")
+        self._render_setup_view(getattr(self, "_setup_readiness_cache", None))
+
     def _setup_set_stage(self, stage):
         # Wizard navigation must be a pure UI operation.  In particular, do not
         # rescan Archipelago/worlds/maps just because the user clicked Back or

@@ -219,7 +219,17 @@ class SetupControllerMixin:
         self.setup_status_var.set("Ready to connect." if not missing else "Connect blocked until installed: "+", ".join(missing))
         if hasattr(self,"connect_btn") and not bool(getattr(self.snapshot,"connected",False)): self.connect_btn.configure(state="normal" if not missing else "disabled")
         if missing:
-            if self.startup_stage!="setup_required": self.startup_stage="setup_required"; self.startup_stage_started_at=time.monotonic(); self._append_log("WayFinder Setup is incomplete."); self._append_log("Native runtime startup deferred until required setup is complete."); self._append_log("Missing setup requirements: "+", ".join(missing)+".")
+            if self.startup_stage != "setup_required":
+                self.startup_stage = "setup_required"
+                self.startup_stage_started_at = time.monotonic()
+                self._append_log("WayFinder Setup is incomplete.")
+                self._append_log("Native runtime startup deferred until required setup is complete.")
+                self._append_log("Missing setup requirements: " + ", ".join(missing) + ".")
+                # If dependencies are the only blocker, take the user straight to
+                # the actionable World Dependencies stage instead of leaving them
+                # on a page that only reports that setup is incomplete.
+                if missing == ["World Dependencies"] and hasattr(self, "_open_setup_stage"):
+                    self.root.after_idle(lambda: self._open_setup_stage(4))
         elif self.startup_stage in {"setup_check","setup_required"}: self.startup_stage="setup_ready"; self.startup_stage_started_at=time.monotonic(); self._append_log("WayFinder Setup prerequisites complete; native runtime will start when Connect is requested.")
         if hasattr(self,"setup_wizard_body"): self._render_setup_view(status)
         return status

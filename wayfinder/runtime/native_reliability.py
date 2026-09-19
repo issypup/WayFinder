@@ -128,9 +128,19 @@ class NativeReliability(APProtocol):
             report['dependencies']=require_dependencies(record,DEPENDENCIES_DIR)
             dependency_ms=round((time.perf_counter()-dependency_started)*1000.0,3)
             dep_total=len(report['dependencies'])
-            self.world_preparation('dependencies',5,10,f'Verified {dep_total} dependenc{'y' if dep_total==1 else 'ies'}', game=ctx.game, slot=ctx.auth or 'Player', progress_mode='determinate', progress_current=dep_total, progress_total=dep_total)
+            # ``dep_total`` is the number of requirements declared by this APWorld,
+            # not the number of packages available in WayFinder's managed environment.
+            # Report both so an APWorld with no direct requirements does not appear as
+            # "0 dependencies installed" after the managed dependency check succeeds.
+            import importlib.metadata
+            managed_dependency_count = sum(1 for _ in importlib.metadata.distributions(path=[str(DEPENDENCIES_DIR)]))
+            dep_message = (
+                f'Verified {dep_total} APWorld dependenc{'y' if dep_total==1 else 'ies'} • '
+                f'{managed_dependency_count} managed package{'s' if managed_dependency_count != 1 else ''} available'
+            )
+            self.world_preparation('dependencies',5,10,dep_message, game=ctx.game, slot=ctx.auth or 'Player', progress_mode='determinate', progress_current=1, progress_total=1, dependency_count=dep_total, managed_dependency_count=managed_dependency_count)
             stage('Dependencies');token.checkpoint()
-            self.world_preparation('apworld',4,10,f'APWorld located: {Path(record.path).name}', game=ctx.game, slot=ctx.auth or 'Player', progress_mode='determinate', progress_current=1, progress_total=1, apworld=Path(record.path).name, apworld_path=str(record.path), apworld_source=str(getattr(record,'source','') or ''), apworld_version=str(getattr(record,'version','') or ''), identification=('archipelago.json' if getattr(record,'manifest',{}) else 'Legacy literal fallback'), dependency_count=dep_total)
+            self.world_preparation('apworld',4,10,f'APWorld located: {Path(record.path).name}', game=ctx.game, slot=ctx.auth or 'Player', progress_mode='determinate', progress_current=1, progress_total=1, apworld=Path(record.path).name, apworld_path=str(record.path), apworld_source=str(getattr(record,'source','') or ''), apworld_version=str(getattr(record,'version','') or ''), identification=('archipelago.json' if getattr(record,'manifest',{}) else 'Legacy literal fallback'), dependency_count=dep_total, managed_dependency_count=managed_dependency_count)
             environment=environment_identity(self.ap_root,DEPENDENCIES_DIR)
             report['environment']=environment
             if self.apworld_environment is not None and self.apworld_environment!=environment:

@@ -99,6 +99,10 @@ class WheelInstaller:
         self.accepted = []
         self.accepted_constraints = []
         self._installed_signature = None
+        # Candidates already materialized in the managed target during this run.
+        # Later requirement units are cumulative, so unchanged wheels can be reused
+        # instead of being written to disk again on every unit.
+        self._installed_selected = {}
 
     def active(self, requirement, extras=()):
         return requirement.marker is None or any(
@@ -402,6 +406,7 @@ class WheelInstaller:
         if signature != self._installed_signature or not self.target.is_dir():
             self.commit(selected)
             self._installed_signature = signature
+            self._installed_selected = dict(selected)
         else:
             self.progress('Resolved dependencies are already installed in this run')
         self.accepted, self.accepted_constraints = roots, limits
@@ -426,14 +431,40 @@ class WheelInstaller:
                 raise InstallError(f"Previous interrupted install requires recovery: {backup}. Close WayFinder and restore/remove this backup before retrying.")
             paths = {}
             for name, candidate in sorted(selected.items()):
-                self.progress(f"Installing {name} {candidate[0]}")
+                previous = self._installed_selected.get(name)
+                unchanged = (
+                    previous is not None
+                    and previous[2]["digests"]["sha256"] == candidate[2]["digests"]["sha256"]
+                    and self.target.is_dir()
+                )
+                if unchanged:
+                    self.progress(f"Reusing {name} {candidate[0]}")
+                else:
+                    self.progress(f"Installing {name} {candidate[0]}")
                 for relative, data in self.wheel(candidate[2])[0].items():
                     key = relative.casefold()
                     if key in paths and paths[key] != data:
                         raise InstallError(f"Conflicting wheel files: {relative}")
                     paths[key] = data
-                    destination = stage.joinpath(*self.safe_path(relative))
+                    safe_relative = self.safe_path(relative)
+                    destination = stage.joinpath(*safe_relative)
                     destination.parent.mkdir(parents=True, exist_ok=True)
+                    source = self.target.joinpath(*safe_relative)
+                    if unchanged and source.is_file():
+                        try:
+                            # Stage unchanged files as hard links. The target and stage
+                            # share a volume, so this avoids repeatedly rewriting large
+                            # dependency trees while preserving the atomic directory swap.
+                            os.link(source, destination)
+                            continue
+                        except OSError:
+                            # Filesystems/security products can reject hard links; copying
+                            # is still cheaper and safer than treating reuse as a failure.
+                            try:
+                                shutil.copy2(source, destination)
+                                continue
+                            except OSError:
+                                pass
                     destination.write_bytes(data)
             if self.target.exists():
                 self.target.rename(backup)
