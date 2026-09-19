@@ -38,10 +38,6 @@ echo [1/4] Installing build/runtime dependencies...
 %PY% -m pip install --upgrade pyinstaller pillow packaging colorama==0.4.6 websockets==13.1 PyYAML==6.0.3 jellyfish==1.2.1 jinja2==3.1.6 schema==0.7.8 bsdiff4==1.2.6 platformdirs==4.9.4 certifi cython cymem orjson typing_extensions pyshortcuts pathspec Pymem requests
 if errorlevel 1 goto :fail
 
-echo Checking bundled Python 3.13 native dependency wheels...
-%PY% tools\verify_native_wheels.py
-if errorlevel 1 goto :fail
-
 echo [2/4] Cleaning old build output...
 if exist build rmdir /s /q build
 if exist release rmdir /s /q release
@@ -83,7 +79,6 @@ echo [3/4] Building WayFinder.exe with live debug console...
   --collect-all colorama ^
   --exclude-module pip ^
   --exclude-module uv ^
-  --add-data "native_wheels;native_wheels" ^
   --add-data "assets\wayfinder.ico;assets" ^
   --add-data "assets\wayfinder_icon_master.png;assets" ^
   --hidden-import pkgutil ^
