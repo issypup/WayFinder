@@ -24,7 +24,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from .source_recipes import source_candidate, source_payload, source_matches
-from .bundled_wheels import bundled_candidates
+from .bundled_wheels import remote_candidates
 
 from packaging.markers import default_environment
 from packaging.requirements import Requirement
@@ -125,7 +125,7 @@ class WheelInstaller:
     def candidates(self, name, requirements):
         if name in {"pip", "uv"}:
             raise ResolutionError(f"Package installer dependency unsupported: {name}; WayFinder only installs runtime libraries")
-        native = bundled_candidates(name, requirements, self.tags)
+        native = remote_candidates(name, requirements, self.tags)
         if native is not None:
             return [candidate for candidate in native if self.satisfies(candidate, requirements)]
         if any(r.url for r in requirements):
@@ -199,12 +199,8 @@ class WheelInstaller:
         if path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             path.unlink()
         if not path.exists():
-            if 'bundled_path' in entry:
-                self.progress(f"Verifying bundled {entry['filename']}")
-                data = Path(entry['bundled_path']).read_bytes()
-            else:
-                self.progress(f"Downloading {entry['filename']}")
-                data = self.fetch(entry["url"], 256 * 1024 * 1024)
+            self.progress(f"Downloading {entry['filename']}")
+            data = self.fetch(entry["url"], 256 * 1024 * 1024)
             if hashlib.sha256(data).hexdigest() != digest:
                 raise InstallError(f"SHA256 mismatch: {entry['filename']}")
             with tempfile.NamedTemporaryFile(dir=self.cache, delete=False) as stream:
