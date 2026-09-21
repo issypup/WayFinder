@@ -40,5 +40,6 @@ def test_entrypoint_boot_version_matches_package_version():
     package_version = (ROOT / "wayfinder" / "__init__.py").read_text(encoding="utf-8")
     entrypoint = (ROOT / "run_wayfinder.py").read_text(encoding="utf-8")
     import re
-    version = re.search(r'__version__ = "([^"]+)"', package_version).group(1)
+    version_source = (root / "wayfinder" / "version.py").read_text(encoding="utf-8")
+    version = re.search(r'WAYFINDER_VERSION = "([^"]+)"', version_source).group(1)
     assert f'APP_VERSION = "{version}"' in entrypoint

@@ -27,6 +27,7 @@ def test_reopening_reconciles_player_target_before_rendering():
     app.map_selector_var.set.reset_mock()
     app.map_selector_var.get.return_value='Manual'
     app._resume_map_page()
+    # Same runtime area: preserve the map the user chose to browse.
     app.map_selector_var.set.assert_not_called()
 
 

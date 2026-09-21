@@ -12,4 +12,4 @@ def test_pack_converter_is_dedicated_page_not_map_card():
     assert 'def _build_pack_converter(self):' in source
     map_chunk=source[source.index('def _build_map(self):'):source.index('def _build_pack_converter(self):')]
     assert 'Convert PopTracker Pack…' not in map_chunk
-    assert 'Convert UT Pack…' not in map_chunk
+    assert 'Convert WayFinder Pack…' not in map_chunk

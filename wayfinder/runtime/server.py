@@ -246,7 +246,7 @@ class NativeRuntime(NativeReliability):
 
         # Explicit guard: WayFinder must never import the old tracker world.
         if "worlds.tracker" in sys.modules or "worlds.tracker.TrackerCore" in sys.modules:
-            raise RuntimeError("Universal Tracker module was imported into native runtime; refusing to continue")
+            raise RuntimeError("Legacy tracker module was imported into WayFinder native runtime; refusing to continue")
 
     # /**
     #  * Function: _make_context
@@ -360,6 +360,7 @@ class NativeRuntime(NativeReliability):
                 self._room_games = []
                 self._game_probe_index = -1
                 self._game_probe_active = False
+                self._game_probe_token = 0
                 outer.set_startup_stage("context_ready", "WayFinder network context created.")
 
             # /**
@@ -397,7 +398,30 @@ class NativeRuntime(NativeReliability):
                 self.game = candidate
                 self._game_probe_active = True
                 outer.send_log(f"Trying Archipelago slot game {self._game_probe_index + 1}/{len(self._room_games)}: {candidate}")
+                self._game_probe_token += 1
+                probe_token = self._game_probe_token
+                probe_index = self._game_probe_index
                 await self.send_connect(game=candidate)
+                outer.send_log(f"Archipelago slot-game probe sent: {candidate}")
+                asyncio.create_task(
+                    self._watch_game_probe(probe_token, probe_index, candidate),
+                    name=f"WayFinder game probe watchdog: {candidate}",
+                )
+
+            async def _watch_game_probe(self, probe_token: int, probe_index: int, candidate: str):
+                """Prevent a lost InvalidGame response from stalling game discovery forever."""
+                await asyncio.sleep(10.0)
+                if self._wayfinder_manual_disconnect or not self._game_probe_active:
+                    return
+                if probe_token != self._game_probe_token or probe_index != self._game_probe_index:
+                    return
+                if not getattr(self, "server", None):
+                    outer.send_log(f"Slot-game probe for {candidate} is waiting for the Archipelago connection to recover.")
+                    return
+                outer.send_log(
+                    f"No response to Archipelago slot-game probe for {candidate} after 10s; trying the next RoomInfo game candidate."
+                )
+                await self._send_next_game_probe()
 
             # /**
             #  * Function: server_auth
@@ -472,6 +496,7 @@ class NativeRuntime(NativeReliability):
                     except Exception:
                         self.game = ""
                     self._game_probe_active = False
+                    self._game_probe_token += 1
                     outer.send_log(f"Connected to Archipelago as {self.auth} ({self.game}).")
                     outer.world_preparation("authentication",2,10,f"Authenticated slot {self.auth}",game=self.game,slot=self.auth,progress_mode="determinate",progress_current=1,progress_total=1)
                     outer.world_preparation("game_detection",3,10,f"Connected game: {self.game}",game=self.game,slot=self.auth,progress_mode="determinate",progress_current=1,progress_total=1)
@@ -1077,13 +1102,14 @@ class NativeRuntime(NativeReliability):
         self.send_status("recalculating", True)
 
     async def _watch_initial_archipelago_connection(self, server: str) -> None:
-        """Describe an initial refusal as a normal hosted-room wake-up state.
+        """Report a slow initial connection without guessing that the room is asleep.
 
-        CommonClient owns automatic reconnection. This monitor never interferes
-        with it; it only gives the GUI a calm status if no socket has appeared
-        shortly after the user pressed Connect.
+        A missing ``ctx.server`` shortly after Connect only means that the
+        websocket handshake has not completed yet. CommonClient owns retries,
+        so this monitor is deliberately informational and never degrades the
+        runtime merely because a short grace period elapsed.
         """
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(3.0)
         ctx = self.ctx
         if ctx is None or getattr(ctx, "_wayfinder_manual_disconnect", False):
             return
@@ -1091,13 +1117,9 @@ class NativeRuntime(NativeReliability):
             return
         if getattr(ctx, "server", None):
             return
-        self.transition("DEGRADED","Server appears asleep")
-        self.component_health("AP Server","degraded","Server appears asleep; automatic retry continues")
-        message = (
-            "Server appears asleep. Server is not accepting connections yet. If this hosted Archipelago room is asleep, "
-            "open its room/site to wake it. WayFinder will keep retrying automatically."
-        )
-        self.send_status("ap_connection_state", {"state": "waiting_for_server", "message": message})
+        message = "Still connecting to Archipelago; waiting for the websocket handshake. Automatic retry remains active."
+        self.component_health("AP Server", "busy", "Connection handshake pending")
+        self.send_status("ap_connection_state", {"state": "connecting", "message": message})
         self.send_log(message)
 
     # /**

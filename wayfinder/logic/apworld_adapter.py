@@ -11,7 +11,7 @@ from wayfinder.utils.ignored import ignored as _ignored
 
 """Compatibility adapter from a generated Archipelago MultiWorld to UB native logic.
 
-This deliberately does not call Universal Tracker reachability.  It consumes the
+This deliberately uses WayFinder native reachability.  It consumes the
 already-generated APWorld graph/rules and evaluates them with a small
 WayFinder-owned state proxy.  Unsupported state API calls become explicit
 adapter errors instead of silently changing logic.

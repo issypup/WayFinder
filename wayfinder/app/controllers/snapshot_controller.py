@@ -173,8 +173,17 @@ class SnapshotControllerMixin:
             return
         self._snapshot_ui_refresh_generation += 1
         generation = self._snapshot_ui_refresh_generation
+        try:
+            now = time.monotonic()
+            last = float(getattr(self, "_map_debug_last_schedule", 0.0) or 0.0)
+            if now - last >= 0.5:
+                self._map_debug_last_schedule = now
+                print(f"[MAP-DEBUG] UI refresh scheduled gen={generation} pending={self._snapshot_ui_refresh_after_id!r} page={getattr(self, 'current_page', '')!r} seq={getattr(self.snapshot, 'snapshot_sequence', 0)}", flush=True)
+        except Exception:
+            pass
         if self._snapshot_ui_refresh_after_id is not None:
             try:
+                print(f"[MAP-DEBUG] cancelling pending UI refresh id={self._snapshot_ui_refresh_after_id!r} for newer gen={generation}", flush=True)
                 self.root.after_cancel(self._snapshot_ui_refresh_after_id)
             except Exception:
                 _ignored("intentional best-effort fallback")
@@ -196,7 +205,11 @@ class SnapshotControllerMixin:
         def run_batch(index: int = 0) -> None:
             """Handle run batch."""
             if self._closing or generation != self._snapshot_ui_refresh_generation:
+                if generation != self._snapshot_ui_refresh_generation:
+                    print(f"[MAP-DEBUG] UI refresh gen={generation} abandoned before batch={index}; current_gen={self._snapshot_ui_refresh_generation}", flush=True)
                 return
+            if index == 0:
+                print(f"[MAP-DEBUG] UI refresh gen={generation} batch0 RUNNING seq={getattr(self.snapshot, 'snapshot_sequence', 0)}", flush=True)
             if index >= len(batches):
                 self._snapshot_ui_refresh_after_id = None
                 return
@@ -296,10 +309,18 @@ class SnapshotControllerMixin:
         """Drain queued runtime events and apply them from Tk's event thread."""
         if self._closing:
             return
+        # Never drain an unbounded producer queue in one Tk callback.  The native
+        # runtime can publish snapshots/status events continuously; if we wait for
+        # the queue to become empty, Tk may never regain control to run the
+        # snapshot UI refresh callbacks or paint canvas changes until the user
+        # generates another window event.
+        processed = 0
+        max_events_per_tick = 24
         try:
-            while not self._closing:
+            while not self._closing and processed < max_events_per_tick:
                 # Variable(s): `kind` (kind), `payload` (payload); named state retained for the surrounding calculation or subsequent calls.
                 kind,payload=self.events.get_nowait()
+                processed += 1
                 if kind=="snapshot":
                     try:
                         self._apply_snapshot(payload)
@@ -338,7 +359,11 @@ class SnapshotControllerMixin:
                     ErrorHandler().handle_error(RuntimeError(str(payload)), "WayFinder could not install the map pack. Validate the pack and check Diagnostics for details.", "Map Pack Error", error_code="WF-MAP-001")
         except queue.Empty: _ignored("intentional best-effort fallback")
         if not self._closing:
-            self.root.after(50,self._drain_events)
+            # If a burst is still queued, yield to Tk first and continue almost
+            # immediately.  This lets after(0)/after_idle marker refreshes and
+            # normal canvas repaints run without requiring a click/focus event.
+            delay = 1 if processed >= max_events_per_tick else 50
+            self.root.after(delay,self._drain_events)
 
     def _apply_status(self,name,value):
         """Handle apply status."""
@@ -681,6 +706,13 @@ class SnapshotControllerMixin:
                 f"{s.starting_location} (source: {s.starting_location_source or 'runtime snapshot'})."
             )
         self._record_recent_changes(self.previous_snapshot,s)
+        try:
+            old_by={x.name:x.status for x in self.previous_snapshot.locations}
+            new_by={x.name:x.status for x in s.locations}
+            changed=[f"{n}:{old_by.get(n)}->{new_by.get(n)}" for n in new_by if old_by.get(n) != new_by.get(n)]
+            print(f"[MAP-DEBUG] SNAPSHOT ACCEPT seq={getattr(s,'snapshot_sequence',0)} connected={s.connected} game={s.game!r} locations={len(s.locations)} checked={getattr(s,'checked_count',0)} changed={changed[:12]}", flush=True)
+        except Exception as exc:
+            print(f"[MAP-DEBUG] snapshot diagnostic failed: {exc}", flush=True)
         self._schedule_snapshot_ui_refresh()
         self.stat_vars["reach"].set(str(len(s.reachable)) if getattr(s,"reachability_available",True) else "N/A"); self.stat_vars["missing"].set(str(s.missing_count)); self.stat_vars["checked"].set(str(s.checked_count)); self.stat_vars["prog"].set(str(sum(1 for x in s.inventory if x.progression))); self.stat_vars["glitch"].set(str(len(s.glitched))); self.stat_vars["events"].set(str(len(s.events)) if getattr(s,"events_available",True) else "N/A"); self.stat_vars["regions"].set(str(len(s.in_logic_regions)) if getattr(s,"reachability_available",True) else "N/A"); self.stat_vars["go"].set(s.go_mode)
         # Variable(s): `position_state` (position state); named state retained for the surrounding calculation or subsequent calls.

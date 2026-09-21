@@ -302,7 +302,7 @@ def resolved_start(slot_data: Any, game: str = ''):
 
     Generic games are detected from common key names. Known APWorld caveats are
     checked first so non-standard fields and numeric Choice values can be shown
-    as the actual generated area while preserving the raw value for UT restore.
+    as the actual generated area while preserving the raw value for WayFinder restore.
     """
     if not isinstance(slot_data, dict): return None
 

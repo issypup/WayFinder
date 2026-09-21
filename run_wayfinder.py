@@ -28,8 +28,9 @@ from pathlib import Path
 from typing import TextIO
 from wayfinder.diagnostics import sanitize, make_record, format_record
 
-APP_VERSION = "1.0.0"
+from wayfinder.version import WAYFINDER_VERSION
 
+APP_VERSION = WAYFINDER_VERSION
 # ---------------------------------------------------------------------------
 # Early boot logging
 # ---------------------------------------------------------------------------

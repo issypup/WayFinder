@@ -12,4 +12,6 @@ reconstruction, state application, reachability, event sweeping and IPC.
 """
 
 # Constant(s): `RUNTIME_VERSION`; shared configuration value(s) intentionally kept stable within this module.
-RUNTIME_VERSION = "0.11.3"
+from wayfinder.version import ENGINE_VERSION
+
+RUNTIME_VERSION = ENGINE_VERSION

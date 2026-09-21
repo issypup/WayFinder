@@ -2,7 +2,7 @@
 
 This module is intentionally UI- and converter-neutral.  Both the standalone
 pack converter and WayFinder's live map-pack loader import these helpers, so a
-new PopTracker/UT structural compatibility fix has one implementation and one
+the shared map-pack structural compatibility fix has one implementation and one
 set of semantics.
 
 Runtime state (reachability, checked state, discovered entrance assignments)
@@ -136,7 +136,7 @@ def read_compatible_json(
     warnings: list[str] | None = None,
     root: Path | None = None,
 ) -> Any:
-    """Read JSON using the shared PopTracker/UT compatibility policy."""
+    """Read JSON using the shared WayFinder map-pack compatibility policy."""
     text = Path(path).read_text(encoding="utf-8-sig")
     try:
         data, features = loads_compatible_json(text)
@@ -177,13 +177,11 @@ def extract_lua_location_id_mapping(
     root: Path,
     warnings: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Read PopTracker AP IDs from scripts/**/location_mapping.lua.
-
-    Supports decimal and hexadecimal Lua table keys.
-    """
+    """Read direct and hosted-code PopTracker AP location mappings."""
     mapping: dict[str, list[int]] = {}
-    pattern_double = re.compile(r'\[\s*((?:0[xX][0-9a-fA-F]+)|(?:\d+))\s*\]\s*=\s*"(@[^"]+)"')
-    pattern_single = re.compile(r"\[\s*((?:0[xX][0-9a-fA-F]+)|(?:\d+))\s*\]\s*=\s*'(@[^']+)'")
+    indirect: list[tuple[int, str]] = []
+    entry_double = re.compile(r'\[\s*((?:0[xX][0-9a-fA-F]+)|(?:\d+))\s*\]\s*=\s*(?:\{\s*)?"([^"]+)"')
+    entry_single = re.compile(r"\[\s*((?:0[xX][0-9a-fA-F]+)|(?:\d+))\s*\]\s*=\s*(?:\{\s*)?'([^']+)'")
     for path in sorted(Path(root).glob("scripts/**/location_mapping.lua")):
         try:
             lines = path.read_text(encoding="utf-8-sig", errors="replace").splitlines()
@@ -191,13 +189,47 @@ def extract_lua_location_id_mapping(
             continue
         for line in lines:
             code = line.split("--", 1)[0]
-            match = pattern_double.search(code) or pattern_single.search(code)
+            match = entry_double.search(code) or entry_single.search(code)
             if not match:
                 continue
             location_id = int(match.group(1), 0)
-            hierarchy = match.group(2)[1:].strip().strip("/")
-            if hierarchy:
-                mapping.setdefault(hierarchy, []).append(location_id)
+            target = match.group(2).strip()
+            if target.startswith("@"):
+                hierarchy = target[1:].strip().strip("/")
+                if hierarchy:
+                    mapping.setdefault(hierarchy, []).append(location_id)
+            elif target:
+                indirect.append((location_id, target))
+
+    # Some PopTracker packs map an AP location ID to a hosted tracker code
+    # (e.g. SS1) and archipelago.lua then mutates the actual @location. Resolve
+    # that bridge so WayFinder can use the real AP ID and collected state.
+    lua_chunks: list[str] = []
+    function_pattern = re.compile(r"(?ms)^\s*function\s+\w+\s*\([^\n]*\).*?(?=^\s*function\s+\w+\s*\(|\Z)")
+    for path in sorted(Path(root).glob("scripts/**/*.lua")):
+        if path.name == "location_mapping.lua":
+            continue
+        try:
+            text = path.read_text(encoding="utf-8-sig", errors="replace")
+        except OSError:
+            continue
+        lua_chunks.extend(function_pattern.findall(text))
+    ref_pattern = re.compile("[\"'](@[^\"']+)[\"']")
+    resolved_indirect = 0
+    for location_id, tracker_code in indirect:
+        code_patterns = (f'"{tracker_code}"', f"'{tracker_code}'")
+        candidates: list[str] = []
+        for chunk in lua_chunks:
+            if not any(token in chunk for token in code_patterns):
+                continue
+            for ref in ref_pattern.findall(chunk):
+                hierarchy = ref[1:].strip().strip("/")
+                if hierarchy and hierarchy not in candidates:
+                    candidates.append(hierarchy)
+        if len(candidates) == 1:
+            mapping.setdefault(candidates[0], []).append(location_id)
+            resolved_indirect += 1
+
     normalized: dict[str, Any] = {}
     for hierarchy, ids in mapping.items():
         unique = list(dict.fromkeys(ids))
@@ -207,6 +239,10 @@ def extract_lua_location_id_mapping(
             f"Imported {sum(len(v) if isinstance(v, list) else 1 for v in normalized.values())} "
             f"tracker autotracking location ID mapping(s) across {len(normalized)} hierarchical path(s)."
         )
+        if resolved_indirect:
+            warnings.append(
+                f"Resolved {resolved_indirect} hosted PopTracker location mapping(s) through Lua tracker-code bridges."
+            )
     return normalized
 
 
@@ -215,7 +251,7 @@ def iter_marker_records(
     id_mapping: dict[str, Any] | None = None,
     parents: tuple[str, ...] = (),
 ) -> Iterable[dict[str, Any]]:
-    """Yield normalized marker records from arbitrarily nested PT/UT location trees.
+    """Yield normalized marker records from arbitrarily nested supported location trees.
 
     The record format deliberately has no dependency on WayFinder's MapMarker
     class, allowing converters and renderers to consume exactly the same
@@ -235,6 +271,7 @@ def iter_marker_records(
     sections: list[dict[str, Any]] = []
     section_names: list[str] = []
     section_refs: list[str] = []
+    section_tracker_only: list[bool] = []
     for section in value.get("sections", []) or []:
         if not isinstance(section, dict):
             continue
@@ -246,6 +283,11 @@ def iter_marker_records(
         sections.append(section)
         section_names.append(display)
         section_refs.append(ref)
+        # ``hosted_item`` sections are driven by a tracker code rather than a
+        # direct @path entry in some PopTracker autotracking tables. The Lua
+        # location-ID extractor resolves those codes back to their owning path
+        # when possible; retain this flag only as a compatibility fallback.
+        section_tracker_only.append(bool(str(section.get("hosted_item", "")).strip()))
 
     access_rules = [section.get("access_rules", []) for section in sections]
     section_ids: list[tuple[int, ...]] = []
@@ -292,6 +334,7 @@ def iter_marker_records(
             "location_ids": ids,
             "section_access_rules": tuple(access_rules),
             "section_refs": tuple(section_refs),
+            "section_tracker_only": tuple(section_tracker_only),
             "visibility_rules": node_visibility,
             "map_visibility_rules": tuple(map_visibility),
             "source_path": "/".join(node_path),

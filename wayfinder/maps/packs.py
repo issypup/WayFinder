@@ -4,7 +4,7 @@
 #  * Maintenance: Prefer descriptive names, explicit state transitions, and conservative fallbacks over clever compact code.
 #  */
 
-"""Universal Tracker map-pack discovery and parsing.
+"""WayFinder map-pack discovery and parsing.
 
 Supports the native tracker-pack convention used by UT-capable packs:
 ``maps/maps.json`` plus JSON location definitions containing ``map_locations``.
@@ -522,6 +522,9 @@ class MapMarker:
     # Preserve visibility metadata instead of discarding it during normalization.
     node_visibility_rules: tuple[Any, ...] = ()
     map_visibility_rules: tuple[Any, ...] = ()
+    # Sections backed by PopTracker hosted_item state are tracker checks even when
+    # Archipelago does not expose a separate location ID for them.
+    section_tracker_only: tuple[bool, ...] = ()
 
     # /**
     #  * Function: is_group
@@ -785,7 +788,7 @@ class MapPack:
     def load_python(self) -> Any:
         """Load or reuse pack Python without requiring Visual-GUI metadata.
 
-        Native/legacy Universal Tracker packs need no TRACKER_PACK_API value.
+        Legacy WayFinder-compatible packs need no TRACKER_PACK_API value.
         Their existing Python is loaded normally and recognised hooks are
         discovered dynamically. TRACKER_PACK_API is optional and is only used
         when a pack explicitly opts into versioned Visual-GUI extensions.
@@ -941,7 +944,7 @@ class MapPack:
         """
         # Variable(s): `value` (value); named state retained for the surrounding calculation or subsequent calls.
         value=self.call_hook("current_map", snapshot, raw_map_value, default=None)
-        # Native Universal Tracker map_page_index() hooks take the raw DataStorage
+        # Legacy map_page_index() hooks take the raw DataStorage
         # value as their first/only argument.  Do not pass the snapshot first: a
         # one-argument native hook would otherwise receive the snapshot object,
         # often fall back to map index 0, and force the first map (for example
@@ -1077,7 +1080,7 @@ def _normalise_location_ids(value: Any) -> tuple[int, ...]:
 #  * @returns: See the return annotation and implementation; side effects are documented inline where they occur.
 #  */
 def _flatten_locations(value: Any, out: list[MapMarker], id_mapping: dict[str, Any] | None = None, parents: tuple[str, ...] = ()) -> None:
-    """Create MapMarker objects from the shared PT/UT interpretation records."""
+    """Create MapMarker objects from the shared WayFinder interpretation records."""
     for record in iter_marker_records(value, id_mapping, parents):
         out.append(MapMarker(
             record["name"],
@@ -1090,6 +1093,7 @@ def _flatten_locations(value: Any, out: list[MapMarker], id_mapping: dict[str, A
             record["section_refs"],
             record["visibility_rules"],
             record["map_visibility_rules"],
+            section_tracker_only=record.get("section_tracker_only", ()),
         ))
 
 
@@ -1159,7 +1163,7 @@ def _pack_signature(source):
     return (file_signature(source),)
 
 
-MAP_METADATA_CACHE_VERSION = 1
+MAP_METADATA_CACHE_VERSION = 2
 
 def _metadata_cache_path(source: Path, variant_uid: str, signature) -> Path:
     """Handle metadata cache path."""
@@ -1179,6 +1183,7 @@ def _pack_to_cache_payload(pack: MapPack) -> dict[str, Any]:
             section_names=list(m.section_names), section_ids=[list(v) for v in m.section_ids],
             section_access_rules=list(m.section_access_rules), section_refs=list(m.section_refs),
             node_visibility_rules=list(m.node_visibility_rules), map_visibility_rules=list(m.map_visibility_rules),
+            section_tracker_only=list(m.section_tracker_only),
         ) for m in pack.markers],
         "navigation_groups": pack.navigation_groups, "map_order": pack.map_order,
         "variants": pack.variants, "default_variant_uid": pack.default_variant_uid, "variant_uid": pack.variant_uid,
@@ -1199,6 +1204,7 @@ def _pack_from_cache_payload(source: Path, payload: dict[str, Any]) -> MapPack |
             row["section_refs"]=tuple(row.get("section_refs", ()))
             row["node_visibility_rules"]=tuple(row.get("node_visibility_rules", ()))
             row["map_visibility_rules"]=tuple(row.get("map_visibility_rules", ()))
+            row["section_tracker_only"]=tuple(bool(v) for v in row.get("section_tracker_only", ()))
             markers.append(MapMarker(**row))
         return MapPack(
             source=source, root_prefix=str(payload.get("root_prefix", "")), maps=maps, markers=markers,

@@ -191,11 +191,49 @@ class ShellMixin:
         ttk.Label(self.sidebar,text="NAVIGATION",style="Section.TLabel").pack(anchor="w",padx=14,pady=(5,6))
         self.nav_buttons = {}
         # Variable(s): `nav_labels` (nav labels); named state retained for the surrounding calculation or subsequent calls.
-        nav_labels = {"AP Connection":"AP Connection","APWorlds":"APWorlds","Seed":"Seed","Runtime Health":"Runtime Health","Map Intelligence":"Map Intelligence","Dashboard":"⌂  Dashboard","Search, Hints & Inventory":"⌕  Search, Hints & Inventory","Search":"⌕  Search","Checks":"✓  Checks","Map":"▧  Map","Installed Maps":"▤  Installed Maps","Pack Converter":"⇄  Pack Converter","WayFinder Setup":"⚙  WayFinder Setup","Path Explorer":"→  Path Explorer","I’m Stuck?":"?  I’m Stuck?","Progression Graph":"⌘  Progression Graph","Log":"≡  Log","Inventory":"□  Inventory","Events":"◇  Events","Entrances":"⇥  Entrances","Diagnostics":"⚙  Diagnostics","APWorld Compatibility":"↔  APWorld Compatibility"}
-        # Loop variable(s): `name` (name); each iteration represents the next value from the iterable below.
+        nav_labels = {
+            "Dashboard": ("Dashboard", "dashboard"),
+            "AP Connection": ("AP Connection", "ap_connection"),
+            "APWorlds": ("APWorlds", "apworlds"),
+            "Seed": ("Seed", "seed"),
+            "Runtime Health": ("Runtime Health", "runtime_health"),
+            "Map Intelligence": ("Map Intelligence", "map_intelligence"),
+            "Search, Hints & Inventory": ("Search, Hints & Inventory", "search"),
+            "Search": ("Search", "search"),
+            "Checks": ("Checks", "checks"),
+            "Map": ("Map", "map"),
+            "Installed Maps": ("Installed Maps", "installed_maps"),
+            "Pack Converter": ("Pack Converter", "pack_converter"),
+            "I’m Stuck?": ("I’m Stuck?", "stuck"),
+            "Progression Graph": ("Progression Graph", "progression_graph"),
+            "Path Explorer": ("Path Explorer", "path_explorer"),
+            "Log": ("Log", "log"),
+            "Inventory": ("Inventory", "inventory"),
+            "Events": ("Events", "events"),
+            "Entrances": ("Entrances", "entrances"),
+            "WayFinder Setup": ("WayFinder Setup", "setup"),
+            "Diagnostics": ("Diagnostics", "diagnostics"),
+            "APWorld Compatibility": ("APWorld Compatibility", "compatibility"),
+        }
+        # Load the custom sidebar artwork rather than relying on font-dependent
+        # Unicode glyphs.  Keep PhotoImage references for the lifetime of the UI.
+        self._nav_icon_images = {}
+        bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[3]))
+        icon_root = bundle_root / "assets" / "sidebar"
         for name in ["Dashboard","AP Connection","APWorlds","Seed","Runtime Health","Map Intelligence","Search, Hints & Inventory","Checks","Map","Installed Maps","Pack Converter","I’m Stuck?","Progression Graph","Path Explorer","Log","Events","Entrances","WayFinder Setup","Diagnostics","APWorld Compatibility"]:
-            # Variable(s): `btn` (button); named state retained for the surrounding calculation or subsequent calls.
-            btn = ttk.Button(self.sidebar,text=nav_labels[name],style="Nav.TButton",command=lambda n=name:self.show_page(n))
+            label, icon_key = nav_labels[name]
+            normal = active = None
+            try:
+                if Image is not None and ImageTk is not None:
+                    normal = ImageTk.PhotoImage(Image.open(icon_root / f"{icon_key}_normal.png").convert("RGBA"), master=self.root)
+                    active = ImageTk.PhotoImage(Image.open(icon_root / f"{icon_key}_active.png").convert("RGBA"), master=self.root)
+            except (OSError, tk.TclError):
+                normal = active = None
+            self._nav_icon_images[name] = {"normal": normal, "active": active}
+            options = dict(text=label, style="Nav.TButton", command=lambda n=name:self.show_page(n), compound="left")
+            if normal is not None:
+                options["image"] = normal
+            btn = ttk.Button(self.sidebar, **options)
             btn.pack(fill="x",padx=8,pady=2)
             self.nav_buttons[name] = btn
         ttk.Label(self.sidebar,text="",style="Sidebar.TLabel").pack(fill="both",expand=True)
@@ -347,7 +385,12 @@ class ShellMixin:
             self.root.after_idle(self._resume_map_page)
         # Loop variable(s): `nav_name` (nav name), `btn` (button); each iteration represents the next value from the iterable below.
         for nav_name, btn in getattr(self, "nav_buttons", {}).items():
-            btn.configure(style="NavActive.TButton" if nav_name == name else "Nav.TButton")
+            selected = nav_name == name
+            configure = {"style": "NavActive.TButton" if selected else "Nav.TButton"}
+            icon = getattr(self, "_nav_icon_images", {}).get(nav_name, {}).get("active" if selected else "normal")
+            if icon is not None:
+                configure["image"] = icon
+            btn.configure(**configure)
     def _update_live_panel(self):
         """Refresh the compact live-status summary from the current snapshot."""
         if hasattr(self, "live_startup"):

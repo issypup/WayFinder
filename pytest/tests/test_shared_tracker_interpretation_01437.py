@@ -55,3 +55,48 @@ def test_shared_lua_mapping_accepts_hex(tmp_path: Path):
     )
     mapping = extract_lua_location_id_mapping(tmp_path)
     assert mapping["Island/Great Fairy"] == 0x238125
+
+
+def test_shared_lua_mapping_accepts_poptracker_table_wrapped_paths(tmp_path: Path):
+    """Accept PopTracker mappings that wrap each tracker path in a Lua table."""
+    script = tmp_path / "scripts" / "autotracking"
+    script.mkdir(parents=True)
+    (script / "location_mapping.lua").write_text(
+        "[1] = { \"@Sensei's Hut/Sensei's Hut/Chest\" },\n"
+        "[0x20] = { '@Spirit City/Roof/Chest' },\n",
+        encoding="utf-8",
+    )
+    mapping = extract_lua_location_id_mapping(tmp_path)
+    assert mapping["Sensei's Hut/Sensei's Hut/Chest"] == 1
+    assert mapping["Spirit City/Roof/Chest"] == 0x20
+
+
+def test_shared_lua_mapping_resolves_hosted_tracker_code_bridge(tmp_path: Path):
+    """Map hosted PopTracker codes back to the AP check path mutated by Lua."""
+    script = tmp_path / "scripts" / "autotracking"
+    script.mkdir(parents=True)
+    (script / "location_mapping.lua").write_text(
+        '[514] = { "SS1" },\n'
+        '[515] = { "SS2" },\n'
+        '[516] = { "SS3" },\n',
+        encoding="utf-8",
+    )
+    (script / "archipelago.lua").write_text(
+        '''function SumStone1()\n'''
+        '''  if Tracker:FindObjectForCode("SS1").Active then\n'''
+        '''    Tracker:FindObjectForCode("@Slime Citadel/Silky Slime/Summoning Stone").AvailableChestCount = 0\n'''
+        '''  end\nend\n'''
+        '''function SumStone2()\n'''
+        '''  if Tracker:FindObjectForCode("SS2").Active then\n'''
+        '''    Tracker:FindObjectForCode("@Slime Citadel/Secret Room Past Spring/Summoning Stone").AvailableChestCount = 0\n'''
+        '''  end\nend\n'''
+        '''function SumStone3()\n'''
+        '''  if Tracker:FindObjectForCode("SS3").Active then\n'''
+        '''    Tracker:FindObjectForCode("@Slime Citadel/Slurp Stone/Summoning Stone").AvailableChestCount = 0\n'''
+        '''  end\nend\n''',
+        encoding="utf-8",
+    )
+    mapping = extract_lua_location_id_mapping(tmp_path)
+    assert mapping["Slime Citadel/Silky Slime/Summoning Stone"] == 514
+    assert mapping["Slime Citadel/Secret Room Past Spring/Summoning Stone"] == 515
+    assert mapping["Slime Citadel/Slurp Stone/Summoning Stone"] == 516

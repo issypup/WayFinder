@@ -7,7 +7,7 @@
 """Map-pack conversion helpers for WayFinder.
 
 The converter deliberately keeps conversion separate from rendering.  It accepts
-common PopTracker and Universal-Tracker-style map packs, normalises the pieces
+common PopTracker and WayFinder-compatible map packs, normalises the pieces
 WayFinder consumes, and writes a portable WayFinder map-pack ZIP.
 """
 from __future__ import annotations
@@ -757,6 +757,182 @@ def _display_name(root: Path, fallback: str, warnings: list[str] | None = None) 
 #  * @param source_format: Source format supplied by the caller; see type hints and call sites for domain constraints.
 #  * @returns: See the return annotation and implementation; side effects are documented inline where they occur.
 #  */
+
+def _poptracker_live_map_tracking(root: Path, warnings: list[str]) -> dict[str, Any]:
+    """Infer PopTracker live-map DataStorage tracking without game-specific rules."""
+    scripts = sorted(Path(root).glob("scripts/**/*.lua"))
+    if not scripts:
+        return {}
+    texts: list[str] = []
+    for path in scripts:
+        try:
+            texts.append(path.read_text(encoding="utf-8-sig", errors="replace"))
+        except OSError:
+            continue
+    text = "\n".join(texts)
+
+    # Find a table used to activate a PopTracker tab from a SetReply value.
+    hint = re.search(r'Tracker\s*:\s*UiHint\s*\(\s*["\']ActivateTab["\']\s*,\s*(\w+)\s*\[\s*value\s*\]', text)
+    if not hint:
+        return {}
+    table_name = hint.group(1)
+    table_match = re.search(r'(?ms)^\s*' + re.escape(table_name) + r'\s*=\s*\{(.*?)^\s*\}', text)
+    if not table_match:
+        return {}
+    value_targets = {
+        m.group(1).strip(): m.group(2).strip()
+        for m in re.finditer(r'\[\s*["\']([^"\']+)["\']\s*\]\s*=\s*["\']([^"\']+)["\']', table_match.group(1))
+    }
+    if not value_targets:
+        return {}
+
+    # Locate the DataStorage key expression used by SetNotify.  PopTracker packs
+    # commonly concatenate TeamNumber/PlayerNumber; translate that to WayFinder's
+    # neutral {team}/{player} template.
+    key_template = ""
+    for m in re.finditer(r'Archipelago\s*:\s*SetNotify\s*\(\s*\{(.*?)\}\s*\)', text, re.S):
+        expr = m.group(1).strip()
+        if table_name not in text[max(0, m.start()-5000):m.end()+5000] and "ActivateTab" not in text[m.start():m.end()+5000]:
+            continue
+        pieces = [x.strip() for x in expr.split("..")]
+        out: list[str] = []
+        valid = True
+        for piece in pieces:
+            q = re.fullmatch(r'["\'](.*)["\']', piece, re.S)
+            if q:
+                out.append(q.group(1))
+            elif re.search(r'Archipelago\.TeamNumber', piece):
+                out.append('{team}')
+            elif re.search(r'Archipelago\.PlayerNumber', piece):
+                out.append('{player}')
+            else:
+                valid = False
+                break
+        if valid and out:
+            key_template = ''.join(out)
+            break
+    if not key_template:
+        return {}
+
+    # Build map aliases from map names/image filenames plus the location hierarchy
+    # that actually places markers on each map.  This lets e.g. an "Angelic
+    # Hallway" live-zone value resolve to a map named "TG" without hard-coding it.
+    map_terms: dict[str, set[str]] = {}
+    canonical_map_terms: dict[str, set[str]] = {}
+    maps_path = Path(root) / 'maps' / 'maps.json'
+    try:
+        maps_data = read_compatible_json(maps_path, warnings, root) if maps_path.is_file() else []
+    except Exception:
+        maps_data = []
+    if isinstance(maps_data, dict):
+        maps_data = maps_data.get('maps', [])
+    for row in maps_data if isinstance(maps_data, list) else []:
+        if not isinstance(row, dict):
+            continue
+        mid = str(row.get('name') or row.get('id') or '').strip()
+        if not mid:
+            continue
+        terms = map_terms.setdefault(mid, set())
+        canonical = canonical_map_terms.setdefault(mid, set())
+        terms.add(mid.casefold())
+        canonical.add(mid.casefold())
+        img = Path(str(row.get('img') or row.get('image') or '')).stem
+        if img:
+            spaced_img = re.sub(r'(?<=[a-z0-9])(?=[A-Z])', ' ', img)
+            image_term = re.sub(r'[^a-z0-9]+', ' ', spaced_img.casefold()).strip()
+            terms.add(image_term)
+            canonical.add(image_term)
+
+    def walk(node: Any, ancestors: list[str]) -> None:
+        if isinstance(node, list):
+            for child in node:
+                walk(child, ancestors)
+            return
+        if not isinstance(node, dict):
+            return
+        name = str(node.get('name') or '').strip()
+        chain = ancestors + ([name] if name else [])
+        locs = node.get('map_locations')
+        if isinstance(locs, list):
+            for loc in locs:
+                if not isinstance(loc, dict):
+                    continue
+                mid = str(loc.get('map') or '').strip()
+                if mid in map_terms:
+                    map_terms[mid].update(x.casefold() for x in chain if x)
+        children = node.get('children')
+        if children is not None:
+            walk(children, chain)
+
+    for loc_file in sorted(Path(root).glob('locations/**/*.json')):
+        try:
+            walk(read_compatible_json(loc_file, warnings, root), [])
+        except Exception:
+            continue
+
+    def norm(value: str) -> str:
+        return re.sub(r'[^a-z0-9]+', ' ', str(value).casefold()).strip()
+
+    value_to_map: dict[str, str] = {}
+    for live_value, target in value_targets.items():
+        needles = [norm(live_value)] + [norm(x) for x in str(target).split('/')]
+        best_id = ''
+        best_score = 0
+        for mid, terms in map_terms.items():
+            normalized_terms = {norm(x) for x in terms if norm(x)}
+            score = 0
+            for needle in needles:
+                if not needle:
+                    continue
+                if needle in normalized_terms:
+                    score = max(score, 100 + len(needle))
+                elif any(needle in term or term in needle for term in normalized_terms):
+                    score = max(score, 50 + len(needle))
+            if score > best_score:
+                best_id, best_score = mid, score
+        if best_id:
+            value_to_map[live_value] = best_id
+
+    explicit_resolved = len(value_to_map)
+    explicit_missing = sorted(set(value_targets) - set(value_to_map))
+
+    # Also accept canonical map/image names as raw values. Some trackers use
+    # `TabMap[value] or value`, so values absent from the explicit table are
+    # still valid live regions. Include a conservative two-word reversal too.
+    for mid, terms in canonical_map_terms.items():
+        for term in sorted(terms):
+            clean = ' '.join(str(term).split())
+            if clean and clean != mid.casefold():
+                display = ' '.join(word.capitalize() for word in clean.split())
+                value_to_map.setdefault(display, mid)
+                words = display.split()
+                if len(words) == 2:
+                    value_to_map.setdefault(' '.join(reversed(words)), mid)
+
+    if not value_to_map:
+        return {}
+    manifest_game = ''
+    manifest = Path(root) / 'manifest.json'
+    try:
+        data = read_compatible_json(manifest, warnings, root) if manifest.is_file() else {}
+        if isinstance(data, dict):
+            manifest_game = str(data.get('game_name') or data.get('game') or '').strip()
+    except Exception:
+        pass
+    warnings.append(
+        f"Detected generic PopTracker live map tracking via DataStorage key {key_template!r}; "
+        f"resolved {explicit_resolved}/{len(value_targets)} explicit live zone value(s) to converted maps."
+    )
+    if explicit_missing:
+        warnings.append("Live map values needing manual mapping: " + ", ".join(explicit_missing))
+    return {
+        'version': 1,
+        'datastorage_key': key_template,
+        'game_name': manifest_game,
+        'value_to_map': value_to_map,
+        'source': 'poptracker-autotracking',
+    }
+
 def convert_map_pack(source: Path, output: Path, source_format: str) -> ConversionResult:
     # Variable(s): `source` (source); named state retained for the surrounding calculation or subsequent calls.
     """Return convert map pack."""
@@ -853,6 +1029,32 @@ def convert_map_pack(source: Path, output: Path, source_format: str) -> Conversi
             )
             copied += 1
 
+        # Preserve PopTracker live-region DataStorage tracking generically.
+        # The generated metadata is also consumable by the runtime, so this works
+        # for any game whose tracker uses the same PopTracker autotracking pattern.
+        if source_format == "poptracker":
+            live_map = _poptracker_live_map_tracking(root, warnings)
+            if live_map:
+                (stage / "wayfinder_live_map.json").write_text(
+                    json.dumps(live_map, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+                )
+                aliases = json.dumps(live_map.get("value_to_map", {}), ensure_ascii=False, indent=4)
+                hook = f"""# Generated by WayFinder from PopTracker live-map autotracking.
+WAYFINDER_PACK_API_VERSION = 1
+_LIVE_MAP_ALIASES = {aliases}
+
+def current_map(snapshot=None, raw_map_value=None):
+    value = raw_map_value
+    if value is None and snapshot is not None:
+        value = getattr(snapshot, 'raw_map_page_datastorage_value', None)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return _LIVE_MAP_ALIASES.get(text, text)
+"""
+                (stage / "pack.py").write_text(hook, encoding="utf-8")
+                copied += 2
+
         entrance_semantic_report = {}
         if source_format == "poptracker":
             entrance_semantic_report = _audit_poptracker_entrance_semantics(root, location_id_mapping, warnings)
@@ -872,7 +1074,7 @@ def convert_map_pack(source: Path, output: Path, source_format: str) -> Conversi
             "format": WAYFINDER_PACK_FORMAT,
             "format_version": WAYFINDER_PACK_VERSION,
             "name": display,
-            "source_format": "PopTracker" if source_format == "poptracker" else "Universal Tracker",
+            "source_format": "PopTracker" if source_format == "poptracker" else "WayFinder Legacy Pack",
             "source_archive": source.name,
             "maps": len(maps),
             "location_files": location_files,

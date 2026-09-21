@@ -170,7 +170,7 @@ class TrackerInput:
     # Variable(s): `ignored_locations` (ignored locations); named state retained for the surrounding calculation or subsequent calls.
     ignored_locations: set[str] = field(default_factory=set)
     # Deferred entrance name -> resolved region name.  This mirrors the useful
-    # concept from UT without adopting its DataStorage implementation details.
+    # concept natively without adopting another tracker's DataStorage implementation details.
     # Variable(s): `entrance_connections` (entrance connections); named state retained for the surrounding calculation or subsequent calls.
     entrance_connections: Mapping[str, str] = field(default_factory=dict)
 

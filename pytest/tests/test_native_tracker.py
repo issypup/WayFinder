@@ -527,7 +527,7 @@ def test_ut_conversion_preserves_ut_locations(tmp_path):
         assert 'ut_locations/checks.json' in zf.namelist()
         # Variable(s): `meta` (meta); named state retained for the surrounding calculation or subsequent calls.
         meta=json.loads(zf.read('wayfinder_pack.json'))
-        assert meta['source_format'] == 'Universal Tracker'
+        assert meta['source_format'] == 'WayFinder Legacy Pack'
 
 
 # /**

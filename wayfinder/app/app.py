@@ -290,6 +290,8 @@ class WayFinderApp(
         self._active_path_request = 0
         self.map_packs = []; self.active_map_pack = None; self.map_photo = None; self.map_photo_cache = {}; self.map_source_cache = {}; self.map_background_key = None; self.map_zoom = tk.IntVar(value=int(self.settings.get("map_zoom", 50))); self.map_last_game = ""; self.map_last_runtime_target = None; self.map_drag_start = None; self.map_render_generation = 0; self.map_rendering_key = None; self.runtime_client_transport_state = "idle"; self.map_selection_memory = dict(self.settings.get("map_selection_memory", {}) or {})
         self.active_map_pack_choice = tk.StringVar(value=str(self.settings.get("active_map_pack_choice", "Auto") or "Auto"))
+        # Persistent per-game map-pack links. Keys are case-folded Archipelago game names; values are stable pack source paths.
+        self.game_map_pack_links = dict(self.settings.get("game_map_pack_links", {}) or {})
         self.map_variant_choice = tk.StringVar(value="Auto")
         self.map_variant_memory = dict(self.settings.get("map_variant_memory", {}) or {})
         self.map_pack_fingerprints = dict(self.settings.get("map_pack_fingerprints", {}) or {})

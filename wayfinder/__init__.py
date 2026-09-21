@@ -2,4 +2,4 @@
 
 # sig:kuro:pluralchat
 
-__version__ = "1.0.0"
+from .version import WAYFINDER_VERSION, ENGINE_VERSION, __version__

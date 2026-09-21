@@ -251,6 +251,7 @@ class AppearanceMixin:
             "path_collapse_satisfied": bool(self.path_collapse_satisfied.get()),
             "map_selection_memory": self.map_selection_memory,
             "active_map_pack_choice": self.active_map_pack_choice.get(),
+            "game_map_pack_links": dict(getattr(self, "game_map_pack_links", {}) or {}),
             "map_variant_memory": self.map_variant_memory,
             "map_view_memory": self.map_view_memory,
             "map_filter_memory": self.map_filter_memory,
@@ -281,7 +282,7 @@ class AppearanceMixin:
             info="#f39ab0"
         )
     def _configure_style(self):
-        """Configure the shared Universal-Tracker-inspired WayFinder theme."""
+        """Configure the shared WayFinder theme."""
         p=self._palette(); fs=clamp_font_size(self.font_size.get()) if hasattr(self,"font_size") else FONT_SIZE_DEFAULT
         apply_named_fonts(self.root, fs)
         row_height=self._tree_row_height(fs)

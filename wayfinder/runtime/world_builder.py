@@ -21,6 +21,8 @@ import os
 import sys
 import tempfile
 import time
+import re
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -153,15 +155,70 @@ def _matching_player_yaml(folder: Path, slot_name: str) -> Path | None:
 #  * @param world: World supplied by the caller; see type hints and call sites for domain constraints.
 #  * @returns: See the return annotation and implementation; side effects are documented inline where they occur.
 #  */
+
+
+def _generic_map_pack_switch_key(game: str) -> str:
+    """Find a converted map pack's inferred live-map DataStorage key for this game."""
+    try:
+        from wayfinder.storage import app_data_root
+        base = app_data_root() / "map_packs"
+    except Exception:
+        return ""
+    if not base.exists():
+        return ""
+
+    def norm(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", str(value).casefold()).strip()
+
+    wanted = norm(game)
+    wanted_words = {x for x in wanted.split() if len(x) > 2}
+    candidates: list[tuple[int, str]] = []
+
+    def consider(data: Any, source_text: str) -> None:
+        if not isinstance(data, dict):
+            return
+        key = str(data.get("datastorage_key") or "").strip()
+        if not key:
+            return
+        declared = norm(data.get("game_name") or "")
+        source_norm = norm(source_text)
+        score = 0
+        if wanted and wanted in source_norm:
+            score += 100
+        if declared and (declared == wanted or declared in wanted or wanted in declared):
+            score += 80
+        declared_words = {x for x in declared.split() if len(x) > 2}
+        score += 10 * len(wanted_words & declared_words)
+        if score:
+            candidates.append((score, key))
+
+    for meta in base.rglob("wayfinder_live_map.json"):
+        try:
+            consider(json.loads(meta.read_text(encoding="utf-8-sig")), str(meta))
+        except (OSError, ValueError, TypeError):
+            continue
+    for archive in base.rglob("*.zip"):
+        try:
+            with zipfile.ZipFile(archive) as zf:
+                names = [n for n in zf.namelist() if n.endswith("wayfinder_live_map.json")]
+                for name in names:
+                    consider(json.loads(zf.read(name).decode("utf-8-sig")), str(archive))
+        except (OSError, ValueError, TypeError, zipfile.BadZipFile, KeyError):
+            continue
+    if not candidates:
+        return ""
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates[0][1]
+
 def _map_switch_capability(world: Any) -> tuple[str, Any]:
     """Read optional APWorld-published map switching metadata.
 
-    WayFinder deliberately does not import Universal Tracker.  Some APWorlds
+    WayFinder uses its own native runtime.  Some APWorlds
     nevertheless publish neutral tracker metadata on their World class (most
     commonly a ``tracker_world`` mapping) that identifies a DataStorage key
     representing the player's current map/area and an optional value->map-index
     function.  Consuming that metadata lets WayFinder follow the game without
-    depending on the UT runtime itself.
+    depending on another tracker runtime.
     """
     # Variable(s): `candidates` (candidates); named state retained for the surrounding calculation or subsequent calls.
     candidates = [getattr(world, "tracker_world", None), getattr(type(world), "tracker_world", None), world, type(world)]
@@ -183,6 +240,15 @@ def _map_switch_capability(world: Any) -> tuple[str, Any]:
         key = str(key or "").strip()
         if key:
             return key, hook if callable(hook) else None
+
+    # If the APWorld does not advertise map switching itself, consume generic
+    # metadata inferred when a PopTracker pack was converted.  This avoids
+    # game-specific exceptions: any pack using a recognisable SetNotify +
+    # ActivateTab live-region pattern can provide the runtime subscription key.
+    game_name = str(getattr(world, "game", "") or getattr(type(world), "game", "") or "").strip()
+    inferred_key = _generic_map_pack_switch_key(game_name)
+    if inferred_key:
+        return inferred_key, None
     return "", None
 
 
@@ -197,7 +263,7 @@ def _player_position_capability(world: Any) -> tuple[str, Any]:
     """Read optional APWorld-published live player-position metadata.
 
     This is intentionally convention-based and neutral: WayFinder never imports
-    Universal Tracker.  A game may advertise a DataStorage key plus a hook that
+    WayFinder.  A game may advertise a DataStorage key plus a hook that
     translates the live value into map pixel coordinates.  Several sensible key
     names are accepted so APWorlds can expose the capability without depending on
     a WayFinder-specific base class.

@@ -198,8 +198,8 @@ class MapControllerMixin:
         self._remember_current_map()
         self._restore_map_view()
 
-        # Update the area label/progress immediately on user selection instead
-        # of waiting for another runtime snapshot to arrive.
+        # Refresh presentation only.  The current-area label is derived from live
+        # runtime state, so browsing a different map cannot change player state.
         self._refresh_current_area_progress()
         self._refresh_dashboard_overview()
 
@@ -466,7 +466,21 @@ class MapControllerMixin:
         section_ids=getattr(marker,"section_ids",()) or ()
         # Variable(s): `ids` (ids); named state retained for the surrounding calculation or subsequent calls.
         if index < len(section_ids): ids=section_ids[index]
-        return self._map_location(names[index], state, ids)
+        location=self._map_location(names[index], state, ids)
+        if location is not None:
+            return location
+        # PopTracker hosted-item objectives (for example FlipWitch's Summoning
+        # Stones) are genuine tracker checks but are not separate AP locations.
+        # Keep these hard-coded tracker checks visible as Unknown rather than
+        # classifying them as not-in-seed and removing their map marker.
+        tracker_only=getattr(marker, "section_tracker_only", ()) or ()
+        if index < len(tracker_only) and tracker_only[index]:
+            from types import SimpleNamespace
+            return SimpleNamespace(
+                name=names[index], status="unknown", ignored=False,
+                unknown_reason="Hard-coded PopTracker check (no matching live Archipelago location)",
+            )
+        return None
     def _map_effective_location_status(self, loc):
         """Return the map-facing status for a live location.
 
@@ -750,9 +764,69 @@ class MapControllerMixin:
                 return hooked
             if pack.python_error:
                 self._append_log(f"Map-pack hook warning for {pack.display_name}: {pack.python_error}")
+        # Generic string fallback: when the subscribed DataStorage entry is the
+        # APWorld current-map key, its fetched value is authoritative live area
+        # state.  Packs without a Python hook can still follow it when the value
+        # directly names one of their maps (ignoring punctuation/spacing/case).
+        raw=getattr(s, "raw_map_page_datastorage_value", None)
+        if isinstance(raw, str) and raw.strip():
+            folded=lambda value: "".join(ch for ch in str(value).casefold() if ch.isalnum())
+            raw_key=folded(raw)
+            for title in names:
+                if folded(title) == raw_key:
+                    return title
+            # A PopTracker page title/name is often only an abbreviation (for
+            # example ``Ww``) while the APWorld publishes the human area name
+            # (``Witchy Woods``).  Treat the map artwork filename as another
+            # generic alias: converted packs commonly retain the original area
+            # name there even when their UI page uses a short code.
+            for map_def in pack.maps:
+                aliases=(
+                    getattr(map_def, "title", ""),
+                    getattr(map_def, "name", ""),
+                    Path(str(getattr(map_def, "image", "") or "")).stem,
+                )
+                if any(folded(alias) == raw_key for alias in aliases if alias):
+                    title=getattr(map_def, "title", "")
+                    if title in names:
+                        return title
+
+        # Generic fallback for APWorlds that publish a numeric map index rather
+        # than a pack-specific hook.  Resolve against pack order, then title, so
+        # any game exposing standard runtime map metadata can auto-follow.
+        for attr in ("map_page_index", "player_position_map_index"):
+            try:
+                idx=int(getattr(s, attr, -1))
+            except (TypeError, ValueError):
+                idx=-1
+            if 0 <= idx < len(pack.maps):
+                title=pack.maps[idx].title
+                if title in names:
+                    return title
         return None
     def _preferred_map_pack(self, live, game):
-        """Return the user-selected map pack, or automatic best-match selection."""
+        """Return a game-linked pack first, then the manual/global or automatic choice.
+
+        A game link is intentionally independent from the selected map/page.  It
+        answers only "which installed pack belongs to this AP game?"; current-area
+        autotracking remains responsible for choosing the page inside that pack.
+        """
+        game_key=str(game or "").strip().casefold()
+        linked_source=str((getattr(self, "game_map_pack_links", {}) or {}).get(game_key, "") or "").strip()
+        if linked_source:
+            linked_cf=linked_source.casefold()
+            for pack in self.map_packs:
+                if str(pack.source).casefold() == linked_cf:
+                    matches=len(pack.location_names & live) if live else 0
+                    return pack,matches
+            # Do not silently bind this game to a different pack when its explicit
+            # link is missing.  Auto remains available after the user unlinks it.
+            if hasattr(self, "events"):
+                warned=getattr(self, "_missing_game_map_link_warned", set())
+                if game_key not in warned:
+                    warned.add(game_key); self._missing_game_map_link_warned=warned
+                    self.events.put(("log", f"[MAP-LINK] Linked map pack for {game!r} is not installed: {linked_source}"))
+            return None,0
         choice=str(self.active_map_pack_choice.get() if hasattr(self,"active_map_pack_choice") else "Auto").strip()
         if not choice or choice == "Auto":
             return best_pack(self.map_packs,live,game)

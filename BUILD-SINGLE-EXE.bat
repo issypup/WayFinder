@@ -81,6 +81,7 @@ echo [3/4] Building WayFinder.exe with live debug console...
   --exclude-module uv ^
   --add-data "assets\wayfinder.ico;assets" ^
   --add-data "assets\wayfinder_icon_master.png;assets" ^
+  --add-data "assets\sidebar;assets\sidebar" ^
   --hidden-import pkgutil ^
   --hidden-import importlib.metadata ^
   run_wayfinder.py

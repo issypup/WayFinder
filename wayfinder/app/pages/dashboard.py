@@ -503,22 +503,24 @@ class DashboardPageMixin:
         self._update_preparation_panel()
 
     def _dashboard_current_area(self):
-        """Return an area only when the selected map belongs to the live game.
-
-        Map rendering is deliberately deferred while the Map page is hidden.
-        During a connection switch that means ``map_selector_var`` can briefly
-        retain the previous game's title.  Never let that presentation cache
-        masquerade as current runtime state on the Dashboard.
-        """
+        """Return the player's live runtime area, independent of map browsing."""
         snapshot_game=str(getattr(self.snapshot,"game","") or "").strip().casefold()
         map_game=str(getattr(self,"map_last_game","") or "").strip().casefold()
-        pack=getattr(self,"active_map_pack",None)
-        if not snapshot_game or map_game != snapshot_game or pack is None:
+        if not snapshot_game or map_game != snapshot_game:
             return "Unknown"
-        title=self.map_selector_var.get().strip() if hasattr(self,"map_selector_var") else ""
-        if not title or title not in getattr(pack,"maps_by_title",{}):
-            return "Unknown"
-        return title
+        target=str(getattr(self,"map_last_runtime_target","") or "").strip()
+        if target:
+            return target
+        # If map-title resolution fails, the fetched value from the subscribed
+        # APWorld current-map DataStorage key is still authoritative player area.
+        # Never substitute the manually browsed map selector here.
+        key=str(getattr(self.snapshot,"map_page_setting_key","") or "").strip()
+        raw=getattr(self.snapshot,"raw_map_page_datastorage_value",None)
+        if key and raw is not None and not isinstance(raw,(dict,list,tuple,set)):
+            value=str(raw).strip()
+            if value:
+                return value
+        return "Unknown"
 
     def _refresh_dashboard_overview(self):
         """Refresh the structured dashboard overview from the latest available state."""

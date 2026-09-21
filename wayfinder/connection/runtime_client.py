@@ -1067,7 +1067,7 @@ class WayFinderRuntimeClient:
             if startup_stage:
                 self.status_sink("runtime_startup_stage", startup_stage)
             if str(checks.get("Live context hook", "")).startswith("OK"):
-                self.status_sink("ut_runtime_hook", "installed")
+                self.status_sink("wayfinder_runtime_hook", "installed")
             self.status_sink("runtime_state",{"current":msg.get("health_state","READY")})
             if msg.get("component_health"):self.status_sink("component_health",msg["component_health"])
             if msg.get("self_test"):self.status_sink("runtime_self_test",msg["self_test"])

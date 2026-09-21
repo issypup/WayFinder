@@ -366,7 +366,15 @@ class MapPageMixin(
         """Handle refresh current area progress."""
         if not hasattr(self,"map_current_area"):
             return
-        title=self.map_selector_var.get().strip() if hasattr(self,"map_selector_var") else ""
+        # Current area is live player state, not the map the user is browsing.
+        # map_selector_var is presentation/navigation state and must never be used
+        # as a proxy for the player's actual area.
+        title=str(getattr(self, "map_last_runtime_target", "") or "").strip()
+        if not title:
+            key=str(getattr(self.snapshot,"map_page_setting_key","") or "").strip()
+            raw=getattr(self.snapshot,"raw_map_page_datastorage_value",None)
+            if key and raw is not None and not isinstance(raw,(dict,list,tuple,set)):
+                title=str(raw).strip()
         room=str(getattr(self.snapshot,"player_position_label","") or "").strip()
         self.map_current_area.set(f"Current area: {title or '—'}" + (f" • Room: {room}" if room else ""))
 
@@ -389,9 +397,12 @@ class MapPageMixin(
         another map while connected.  We therefore remember the last runtime map
         target and only auto-follow when that target itself changes.
         """
-        if not hasattr(self,"map_canvas"): return
+        if not hasattr(self,"map_canvas"):
+            print("[MAP-DEBUG] refresh_map_from_snapshot ABORT: map_canvas does not exist", flush=True)
+            return
         map_visible = getattr(self,"current_page", "") == "Map" or getattr(self,"_map_popout",None) is not None
         live={x.name for x in self.snapshot.locations}
+        print(f"[MAP-DEBUG] refresh_map_from_snapshot ENTER seq={getattr(self.snapshot,'snapshot_sequence',0)} visible={map_visible} page={getattr(self,'current_page','')!r} game={self.snapshot.game!r} live={len(live)} active_pack={getattr(getattr(self,'active_map_pack',None),'display_name',None)!r} selected_map={self.map_selector_var.get()!r}", flush=True)
 
         # A hidden Map page is still a live view once its pack/canvas has been
         # initialised.  Older code returned here, so accepted snapshots updated
@@ -401,9 +412,57 @@ class MapPageMixin(
         if not map_visible:
             self._map_render_deferred=True
             pack,matches=self._preferred_map_pack(live,self.snapshot.game)
+            if self.snapshot.game and self.snapshot.connected and pack is None and self.active_map_pack is None:
+                activation_key=(str(self.snapshot.game), getattr(self.snapshot, "slot", ""))
+                if getattr(self, "_map_connection_activation_key", None) != activation_key:
+                    self._map_connection_activation_key=activation_key
+                    print(f"[MAP-DEBUG] hidden connection activation: no active pack for game={self.snapshot.game!r}; rescanning installed packs", flush=True)
+                    if hasattr(self, "events"):
+                        self.events.put(("log", f"[MAP-AUTO] Connected game {self.snapshot.game!r}; activating compatible installed map pack."))
+                    self._scan_map_packs()
+            print(f"[MAP-DEBUG] hidden pack match pack={getattr(pack,'display_name',None)!r} matches={matches} pack_changed={pack is not self.active_map_pack or self.snapshot.game != self.map_last_game}", flush=True)
+
+            # Pack matching and map selection are state work, not rendering work.
+            # Do them even while the Map page is hidden so a newly connected seed
+            # auto-selects its map without requiring the user to click Map first.
+            pack_changed = pack is not self.active_map_pack or self.snapshot.game != self.map_last_game
+            if pack_changed:
+                self.active_map_pack=pack; self.map_last_game=self.snapshot.game
+                self.map_last_runtime_target=None
+                self._restore_game_filters()
+                if pack and pack.has_python:
+                    pack.load_python()
+                    if pack.python_error:
+                        self._append_log(f"Map-pack Python for {pack.display_name}: {pack.python_error}")
+                if pack:
+                    names=self._ut_ordered_map_titles(pack,self.snapshot)
+                    self.map_selector.configure(values=names)
+                    runtime_target=self._runtime_map_target(pack,names,self.snapshot)
+                    self.map_last_runtime_target=runtime_target
+                    chosen=runtime_target or self._choose_map_for_pack(pack,names,self.snapshot,prefer_hook=True)
+                    print(f"[MAP-DEBUG] hidden auto-select names={names!r} runtime_target={runtime_target!r} chosen={chosen!r}", flush=True)
+                    if chosen:
+                        self.map_selector_var.set(chosen)
+                else:
+                    self.map_selector.configure(values=()); self.map_selector_var.set("")
+            elif pack:
+                # Continue following genuine runtime map transitions while hidden.
+                names=self._ut_ordered_map_titles(pack,self.snapshot)
+                runtime_target=self._runtime_map_target(pack,names,self.snapshot)
+                previous_target=self.map_last_runtime_target
+                self.map_last_runtime_target=runtime_target
+                # Auto-follow only when the *player* changes area.  A manual map
+                # selection is browsing state and must remain independent until the
+                # runtime reports a genuine area transition.
+                if runtime_target and runtime_target != previous_target:
+                    if runtime_target != self.map_selector_var.get():
+                        self.map_selector_var.set(runtime_target)
+                        self._remember_current_map()
+
             if pack is self.active_map_pack and self.snapshot.game == self.map_last_game and pack is not None:
                 self._map_marker_refresh_deferred=False
                 try:
+                    print(f"[MAP-DEBUG] hidden marker refresh CALL selected={self.map_selector_var.get()!r} background_key={getattr(self,'map_background_key',None)!r} photo={'yes' if getattr(self,'map_photo',None) is not None else 'no'}", flush=True)
                     self._refresh_map_markers(force_rebuild=False)
                     self._refresh_current_area_progress()
                     if hasattr(self, "events"):
@@ -413,13 +472,28 @@ class MapPageMixin(
                     if hasattr(self, "events"):
                         self.events.put(("log", f"[MAP-REFRESH] Hidden-page marker delta deferred: {type(exc).__name__}: {exc}"))
                 return
-            # Pack attachment/map background work is intentionally deferred until
-            # the page is visible; the latest snapshot will be consumed then.
             self._map_marker_refresh_deferred=True
             return
 
         self._map_marker_refresh_deferred=False
         pack,matches=self._preferred_map_pack(live,self.snapshot.game)
+
+        # Connection-time activation: the first live snapshot can arrive before the
+        # asynchronous installed-map scan has populated ``self.map_packs``.  In
+        # that race the dashboard can already report a compatible pack from its
+        # own readiness probe while the Map page still has active_pack=None.
+        # Kick a fresh discovery as soon as the connected game is known; the scan
+        # completion callback selects the matching pack and its initial/current map
+        # on the Tk thread without requiring a Map-page click.
+        if self.snapshot.game and self.snapshot.connected and pack is None and self.active_map_pack is None:
+            activation_key=(str(self.snapshot.game), getattr(self.snapshot, "slot", ""))
+            if getattr(self, "_map_connection_activation_key", None) != activation_key:
+                self._map_connection_activation_key=activation_key
+                print(f"[MAP-DEBUG] connection activation: no active pack for game={self.snapshot.game!r}; rescanning installed packs", flush=True)
+                if hasattr(self, "events"):
+                    self.events.put(("log", f"[MAP-AUTO] Connected game {self.snapshot.game!r}; activating compatible installed map pack."))
+                self._scan_map_packs()
+
         pack_changed = pack is not self.active_map_pack or self.snapshot.game != self.map_last_game
         if pack_changed:
             self.active_map_pack=pack; self.map_last_game=self.snapshot.game
@@ -435,7 +509,7 @@ class MapPageMixin(
                 # attached.  Subsequent snapshots only follow a changed target.
                 runtime_target=self._runtime_map_target(pack,names,self.snapshot)
                 self.map_last_runtime_target=runtime_target
-                chosen=self._choose_map_for_pack(pack,names,self.snapshot,prefer_hook=True)
+                chosen=runtime_target or self._choose_map_for_pack(pack,names,self.snapshot,prefer_hook=True)
                 if chosen: self.map_selector_var.set(chosen)
                 self._render_map(preserve_view=False)
             else:
@@ -445,10 +519,14 @@ class MapPageMixin(
             runtime_target=self._runtime_map_target(pack,names,self.snapshot)
             previous_target=self.map_last_runtime_target
             self.map_last_runtime_target=runtime_target
-            if runtime_target and runtime_target != previous_target and runtime_target != self.map_selector_var.get():
-                self.map_selector_var.set(runtime_target)
-                self._remember_current_map()
-                self._request_map_render(preserve_view=False,delay=40)
+            # Auto-follow only on a genuine live player-area transition.  This lets
+            # the user browse another map without rewriting or being mistaken for
+            # the player's current area.
+            if runtime_target and runtime_target != previous_target:
+                if runtime_target != self.map_selector_var.get():
+                    self.map_selector_var.set(runtime_target)
+                    self._remember_current_map()
+                    self._request_map_render(preserve_view=False,delay=40)
         if pack:
             api=(f" • Pack API v{pack.python_api_version}" if pack.has_python and pack.python_api_compatible and pack.python_api_version is not None else (" • Native tracker Python" if pack.has_python and pack.python_api_compatible else (" • Python hooks disabled" if pack.has_python else "")))
             variant_text=(f"  •  Variant: {pack.variants.get(pack.variant_uid, pack.variant_uid)}" if getattr(pack,"variants",None) else "")
@@ -475,7 +553,9 @@ class MapPageMixin(
         self.installed_maps_tree.delete(*self.installed_maps_tree.get_children())
         active=self.active_map_pack
         for index,pack in enumerate(self.map_packs):
+            linked_games=[g for g,src in (getattr(self,"game_map_pack_links",{}) or {}).items() if str(src).casefold()==str(pack.source).casefold()]
             state="Active" if pack is active else "Installed"
+            if linked_games: state += " • Linked"
             game=getattr(pack,"game","") or getattr(pack,"display_name","")
             maps=len(getattr(pack,"maps",[]) or [])
             markers=len(getattr(pack,"markers",[]) or [])
@@ -485,7 +565,10 @@ class MapPageMixin(
         current=self.active_map_pack_choice.get()
         if current not in labels:
             self.active_map_pack_choice.set("Auto")
-        self.installed_maps_summary.set(f"{len(self.map_packs)} installed map pack{'s' if len(self.map_packs)!=1 else ''} • Active mode: {self.active_map_pack_choice.get()}")
+        game=str(getattr(self.snapshot,"game","") or "").strip()
+        linked=self._linked_map_pack_for_game(game) if game else None
+        link_text=f" • {game} → {linked.display_name}" if game and linked else (f" • {game}: not linked" if game else "")
+        self.installed_maps_summary.set(f"{len(self.map_packs)} installed map pack{'s' if len(self.map_packs)!=1 else ''} • Active mode: {self.active_map_pack_choice.get()}{link_text}")
 
     def _installed_map_choice_changed(self, _event=None):
         """Handle installed map choice changed."""
@@ -509,6 +592,45 @@ class MapPageMixin(
         self.active_map_pack_choice.set(label)
         self._installed_map_choice_changed()
 
+    def _linked_map_pack_for_game(self, game):
+        """Return the installed pack explicitly linked to an Archipelago game."""
+        key=str(game or "").strip().casefold()
+        source=str((getattr(self,"game_map_pack_links",{}) or {}).get(key,"") or "")
+        if not source: return None
+        return next((p for p in self.map_packs if str(p.source).casefold()==source.casefold()),None)
+
+    def _link_selected_map_pack_to_game(self):
+        """Persist the selected installed pack as the default pack for the connected game."""
+        game=str(getattr(self.snapshot,"game","") or "").strip()
+        if not game:
+            self.map_status.set("Connect to an Archipelago game before linking a map pack.")
+            return
+        selection=self.installed_maps_tree.selection() if hasattr(self,"installed_maps_tree") else ()
+        try: pack=self.map_packs[int(selection[0])] if selection else self.active_map_pack
+        except (ValueError,IndexError): pack=None
+        if not pack:
+            self.map_status.set("Select an installed map pack to link to the current game.")
+            return
+        self.game_map_pack_links[game.casefold()]=str(pack.source)
+        self.settings["game_map_pack_links"]=dict(self.game_map_pack_links)
+        self._save_settings()
+        self.map_last_game=""; self.map_last_runtime_target=None
+        self._append_log(f"Linked game {game!r} to map pack {pack.display_name!r}.")
+        self._scan_map_packs(); self._refresh_installed_maps_page()
+
+    def _unlink_current_game_map_pack(self):
+        """Remove the persistent map-pack association for the connected game."""
+        game=str(getattr(self.snapshot,"game","") or "").strip()
+        if not game:
+            self.map_status.set("No connected game to unlink.")
+            return
+        removed=self.game_map_pack_links.pop(game.casefold(),None)
+        self.settings["game_map_pack_links"]=dict(self.game_map_pack_links)
+        self._save_settings()
+        self.map_last_game=""; self.map_last_runtime_target=None
+        if removed: self._append_log(f"Removed map-pack link for game {game!r}.")
+        self._scan_map_packs(); self._refresh_installed_maps_page()
+
     def _build_installed_maps(self):
         """Build the dedicated installed-map-pack management page."""
         p=self._page("Installed Maps")
@@ -518,7 +640,7 @@ class MapPageMixin(
         controls=ttk.Frame(p,style="Card.TFrame",padding=(14,12))
         controls.pack(fill="x",pady=(0,10))
         ttk.Label(controls,text="ACTIVE MAP",style="CardTitle.TLabel").grid(row=0,column=0,sticky="w")
-        ttk.Label(controls,text="Auto chooses the best matching installed map pack for the current game. Choose a pack manually to pin it.",style="CardMuted.TLabel",wraplength=760,justify="left").grid(row=1,column=0,columnspan=4,sticky="w",pady=(3,8))
+        ttk.Label(controls,text="Auto chooses a matching pack. You can also link a pack to the connected game so that exact pack is activated whenever that game connects.",style="CardMuted.TLabel",wraplength=900,justify="left").grid(row=1,column=0,columnspan=5,sticky="w",pady=(3,8))
         self.installed_map_selector=ttk.Combobox(controls,textvariable=self.active_map_pack_choice,state="readonly",width=48,style="MapName.TCombobox")
         self.installed_map_selector.grid(row=2,column=0,sticky="w")
         self.installed_map_selector.bind("<<ComboboxSelected>>",self._installed_map_choice_changed)
@@ -543,6 +665,8 @@ class MapPageMixin(
 
         actions=ttk.Frame(p); actions.pack(fill="x",pady=(8,0))
         ttk.Button(actions,text="Use Selected",style="Accent.TButton",command=self._installed_map_tree_selected).pack(side="left")
+        ttk.Button(actions,text="Link Selected to Current Game",style="Accent.TButton",command=self._link_selected_map_pack_to_game).pack(side="left",padx=(6,0))
+        ttk.Button(actions,text="Unlink Current Game",style="Accent.TButton",command=self._unlink_current_game_map_pack).pack(side="left",padx=(6,0))
         ttk.Button(actions,text="Revalidate Active",style="Accent.TButton",command=self._revalidate_active_map_pack).pack(side="left",padx=(6,0))
         ttk.Button(actions,text="Remove Active",style="Accent.TButton",command=self._remove_map_pack).pack(side="left",padx=(6,0))
 

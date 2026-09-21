@@ -295,14 +295,25 @@ class MapMarkersMixin:
     def _refresh_map_markers(self, force_rebuild=False):
         """Update persistent Canvas markers in-place; never re-decode the background."""
         marker_started=time.perf_counter()
-        if not hasattr(self,"map_canvas"): return
+        if not hasattr(self,"map_canvas"):
+            print("[MAP-DEBUG] marker refresh ABORT: no map_canvas", flush=True)
+            return
         # Variable(s): `pack` (pack); named state retained for the surrounding calculation or subsequent calls.
         pack=self.active_map_pack; md=self._current_map_def()
-        if not pack or not md: return
+        if not pack or not md:
+            print(f"[MAP-DEBUG] marker refresh ABORT: pack={getattr(pack,'display_name',None)!r} map_def={getattr(md,'title',None)!r} selector={self.map_selector_var.get() if hasattr(self,'map_selector_var') else None!r}", flush=True)
+            return
         # Variable(s): `expected` (expected); named state retained for the surrounding calculation or subsequent calls.
         expected=asset_key(pack,md.image,int(self.map_zoom.get()))
         if self.map_background_key != expected or self.map_photo is None:
-            if self._map_zoom_after_id is None and self.map_rendering_key != expected and getattr(self, '_map_failed_key', None) != expected:
+            # Coalesce marker-triggered render requests.  A scheduled request is
+            # already represented by _map_requested_key even before the worker
+            # sets map_rendering_key, so repeated live snapshots must not enqueue
+            # the same background forever.
+            requested=getattr(self, '_map_requested_key', None)
+            pending=(self.map_rendering_key == expected or (requested == expected and self._map_zoom_after_id is not None))
+            if not pending and getattr(self, '_map_failed_key', None) != expected:
+                print(f"[MAP-DEBUG] marker refresh requesting background render expected={expected!r}", flush=True)
                 self._request_map_render(preserve_view=True, delay=70)
             return
         # Variable(s): `factor` (factor); named state retained for the surrounding calculation or subsequent calls.
@@ -326,6 +337,10 @@ class MapMarkersMixin:
         changed={name for name in (canonical.keys() | previous_canonical.keys()) if canonical.get(name) != previous_canonical.get(name)}
         self._map_canonical_marker_state=canonical
         self._map_changed_locations=changed
+        if changed:
+            print(f"[MAP-DEBUG] marker delta seq={getattr(self.snapshot,'snapshot_sequence',0)} changed_count={len(changed)} changed={sorted(changed)[:12]}", flush=True)
+        # Zero-delta snapshots are intentionally silent.  They are normal live
+        # polling and must not flood the console or provoke extra render work.
         # Variable(s): `palette` (palette); named state retained for the surrounding calculation or subsequent calls.
         palette={k:v["color"] for k,v in STATUS_VISUALS.items()}
         # Variable(s): `size_scale` (size scale); named state retained for the surrounding calculation or subsequent calls.

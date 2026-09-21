@@ -24,8 +24,9 @@ def test_dashboard_accepts_selected_area_from_current_game():
     app.snapshot=Snapshot(game="Game B")
     app.map_last_game="Game B"
     app.active_map_pack=SimpleNamespace(maps_by_title={"New Area":object()})
+    app.map_last_runtime_target="New Area"
     app.map_selector_var=Mock()
-    app.map_selector_var.get.return_value="New Area"
+    app.map_selector_var.get.return_value="Browsed Elsewhere"
 
     assert app._dashboard_current_area() == "New Area"
 

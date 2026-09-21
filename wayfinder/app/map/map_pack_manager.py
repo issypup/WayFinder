@@ -94,7 +94,7 @@ class MapPackManagerMixin:
         ttk.Label(intro,text="CONVERT TRACKER PACKS",style="CardTitle.TLabel").pack(anchor="w")
         ttk.Label(
             intro,
-            text=("Convert existing PopTracker or Universal Tracker map packs into WayFinder's "
+            text=("Convert existing PopTracker or WayFinder-compatible map packs into WayFinder's "
                   "portable map-pack format. Conversion creates a new ZIP and leaves the source pack unchanged."),
             style="CardMuted.TLabel",wraplength=980,justify="left"
         ).pack(anchor="w",pady=(4,0))
@@ -111,9 +111,9 @@ class MapPackManagerMixin:
         ut.pack(fill="x",pady=(0,8))
         ut_text=ttk.Frame(ut,style="Card.TFrame")
         ut_text.pack(side="left",fill="x",expand=True)
-        ttk.Label(ut_text,text="Universal Tracker → WayFinder",style="CardTitle.TLabel").pack(anchor="w")
-        ttk.Label(ut_text,text="Convert a Universal Tracker map pack ZIP into WayFinder's portable format.",style="CardMuted.TLabel").pack(anchor="w",pady=(3,0))
-        ttk.Button(ut,text="Convert UT Pack…",style="Accent.TButton",command=lambda:self._convert_map_pack("ut")).pack(side="right",padx=(12,0))
+        ttk.Label(ut_text,text="WayFinder Legacy Pack → WayFinder",style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(ut_text,text="Convert a legacy WayFinder-compatible map pack ZIP into WayFinder's portable format.",style="CardMuted.TLabel").pack(anchor="w",pady=(3,0))
+        ttk.Button(ut,text="Convert WayFinder Pack…",style="Accent.TButton",command=lambda:self._convert_map_pack("ut")).pack(side="right",padx=(12,0))
 
         help_card=ttk.Frame(p,style="Card.TFrame",padding=(14,12))
         help_card.pack(fill="x",pady=(4,0))
@@ -127,7 +127,7 @@ class MapPackManagerMixin:
     def _convert_map_pack(self, source_kind):
         """Convert a third-party map pack to WayFinder's portable map-pack shape."""
         # Variable(s): `title` (title); named state retained for the surrounding calculation or subsequent calls.
-        title = "PopTracker" if source_kind == "poptracker" else "Universal Tracker"
+        title = "PopTracker" if source_kind == "poptracker" else "WayFinder Legacy Pack"
         # Variable(s): `source` (source); named state retained for the surrounding calculation or subsequent calls.
         source=filedialog.askopenfilename(
             title=f"Select {title} Pack",
@@ -219,7 +219,7 @@ class MapPackManagerMixin:
                     if archive_format == "unknown":
                         raise ValueError(
                             "WayFinder could not identify this archive as a converted WayFinder, PopTracker, "
-                            "or Universal Tracker-compatible map pack."
+                            "or WayFinder-compatible map pack."
                         )
                     conversion_temp = tempfile.TemporaryDirectory(prefix="wayfinder-auto-convert-")
                     converted_archive = Path(conversion_temp.name) / f"{selected_archive.stem}-WayFinder.zip"
