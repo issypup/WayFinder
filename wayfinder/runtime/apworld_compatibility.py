@@ -260,6 +260,50 @@ def compatibility_child(request_path):
     return 0 if report['outcome'].startswith('Passed') else 1
 
 
+def _compact_report_history():
+    """Keep only the newest compatibility report/transcript for each APWorld path."""
+    folder = report_directory()
+    if not folder.exists():
+        return
+    grouped = {}
+    referenced_transcripts = set()
+    for path in folder.glob('*.json'):
+        if path.name.endswith('.request.json'):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            continue
+        try:
+            report = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        world_path = report.get('path')
+        if not world_path:
+            continue
+        grouped.setdefault(world_path, []).append((path.stat().st_mtime, path, report))
+    for entries in grouped.values():
+        entries.sort(key=lambda item: item[0], reverse=True)
+        for index, (_mtime, path, report) in enumerate(entries):
+            transcript = report.get('transcript')
+            if index == 0:
+                if transcript:
+                    referenced_transcripts.add(str(Path(transcript).resolve()))
+                continue
+            try:
+                path.unlink(missing_ok=True)
+                if transcript:
+                    Path(transcript).unlink(missing_ok=True)
+            except OSError:
+                pass
+    for transcript in folder.glob('*.log'):
+        try:
+            if str(transcript.resolve()) not in referenced_transcripts:
+                transcript.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def _remove_previous_reports(record):
     """Remove cached reports for this exact staged APWorld before a fresh test.
 
@@ -276,7 +320,7 @@ def _remove_previous_reports(record):
             previous = json.loads(path.read_text(encoding='utf-8'))
         except (OSError, ValueError):
             continue
-        if previous.get('path') == record.path and previous.get('world_hash') == record.sha256:
+        if previous.get('path') == record.path:
             try:
                 transcript = previous.get('transcript')
                 path.unlink(missing_ok=True)
@@ -290,6 +334,7 @@ def _remove_previous_reports(record):
 def run_compatibility_test(record, core_root, dependency_root, cancel=None, timeout=180):
     """A new process per world; timeout/crash/abort retains completed stages."""
     from .process_manager import internal_child_command
+    _compact_report_history()
     _remove_previous_reports(record)
     ident = uuid.uuid4().hex
     folder = report_directory()

@@ -804,18 +804,22 @@ class PathPageMixin:
         return "\n".join(lines)+"\n"
 
     def _solver_output_paths(self):
-        """Return the stable latest path and a timestamped history path."""
+        """Return the single stable solver output path and remove old history files."""
         output_dir=APP_DATA_ROOT / "logs" / "solver"
         output_dir.mkdir(parents=True,exist_ok=True)
-        stamp=datetime.now().astimezone().strftime("%Y-%m-%d_%H-%M-%S_%f")
-        return output_dir / "solver-output.txt", output_dir / f"solver-output-{stamp}.txt"
+        for old_output in output_dir.glob("solver-output-*.txt"):
+            try:
+                old_output.unlink()
+            except OSError:
+                pass
+        return output_dir / "solver-output.txt"
 
     def _write_solver_output(self):
         """Automatically persist every completed Path Explorer solver result as text."""
         if not self.current_path:return None
         try:
-            latest,history=self._solver_output_paths(); text=self._solver_output_text()
-            latest.write_text(text,encoding="utf-8"); history.write_text(text,encoding="utf-8")
+            latest=self._solver_output_paths(); text=self._solver_output_text()
+            latest.write_text(text,encoding="utf-8")
             self._latest_solver_output_path=latest
             return latest
         except Exception as exc:

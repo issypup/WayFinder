@@ -116,11 +116,11 @@ class _BootTeeStream:
 
 
 def initialize_boot_logging(version: str = "unknown") -> Path:
-    """Start or join the current WayFinder boot log.
+    """Start or join the single current WayFinder log.
 
-    The first process creates a timestamped session log and exports its path
-    through ``WF_BOOT_LOG_PATH``. Hidden child roles inherit that path and append
-    to the same log, preserving one startup/runtime diagnostic stream.
+    WayFinder intentionally keeps only ``latest.log`` and ``latest.pid``.
+    Hidden child roles inherit the same log path and append to it. Legacy
+    timestamped boot logs are removed by the owner process on startup.
     """
     global _BOOT_LOG_INITIALIZED, _BOOT_LOG_PATH, _BOOT_LATEST_PATH, _BOOT_LOG_FILES
 
@@ -130,23 +130,30 @@ def initialize_boot_logging(version: str = "unknown") -> Path:
     inherited = os.environ.get("WF_BOOT_LOG_PATH", "").strip()
     logs_dir = _boot_app_data_root() / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
+    latest_path = logs_dir / "latest.log"
+    pid_path = logs_dir / "latest.pid"
 
     if inherited:
         log_path = Path(inherited)
         is_owner = False
     else:
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        log_path = logs_dir / f"boot-{stamp}-{os.getpid()}.log"
+        log_path = latest_path
         os.environ["WF_BOOT_LOG_PATH"] = str(log_path)
         is_owner = True
+        for old_log in logs_dir.glob("boot-*.log"):
+            try:
+                old_log.unlink()
+            except OSError:
+                pass
+        try:
+            pid_path.write_text(str(os.getpid()) + "\n", encoding="utf-8")
+        except OSError:
+            pass
 
-    latest_path = logs_dir / "latest.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    session_handle = log_path.open("w" if is_owner else "a", encoding="utf-8", buffering=1)
 
-    session_handle = log_path.open("a", encoding="utf-8", buffering=1)
-    latest_handle = latest_path.open("w" if is_owner else "a", encoding="utf-8", buffering=1)
-
-    _BOOT_LOG_FILES = [session_handle, latest_handle]
+    _BOOT_LOG_FILES = [session_handle]
     _BOOT_LOG_PATH = log_path
     _BOOT_LATEST_PATH = latest_path
     _BOOT_LOG_INITIALIZED = True
@@ -169,12 +176,12 @@ def initialize_boot_logging(version: str = "unknown") -> Path:
     print(f"Python: {sys.version.replace(chr(10), ' ')}", flush=True)
     print(f"Executable: {sys.executable}", flush=True)
     print(f"Command: {' '.join(sys.argv)}", flush=True)
-    print(f"Session log: {log_path}", flush=True)
     print(f"Latest log: {latest_path}", flush=True)
+    print(f"Latest PID: {pid_path}", flush=True)
     print("=" * 78, flush=True)
 
     def _close_boot_logs() -> None:
-        """Handle close boot logs."""
+        """Flush and close the current log stream."""
         for stream in (sys.stdout, sys.stderr):
             if isinstance(stream, _BootTeeStream) and stream.pending:
                 stream.write("\n")
@@ -190,7 +197,7 @@ def initialize_boot_logging(version: str = "unknown") -> Path:
 
 
 def current_log_path() -> Path | None:
-    """Return the current timestamped boot-log path, if initialized."""
+    """Return the current WayFinder log path, if initialized."""
     return _BOOT_LOG_PATH
 
 
