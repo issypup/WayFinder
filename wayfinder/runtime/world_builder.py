@@ -11,8 +11,7 @@ from wayfinder.utils.ignored import ignored as _ignored
 
 """Reconstruct a one-player APWorld for WayFinder.
 
-Only generic Archipelago generation primitives are used here.  No code from
-``worlds.tracker`` or ``worlds.tracker_addons`` is imported or required.
+Only generic Archipelago generation primitives are used here.
 """
 
 import json
