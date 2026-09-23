@@ -694,3 +694,10 @@ def test_poptracker_converter_imports_nested_autotracking_location_ids(tmp_path)
     assert len(markers) == 1
     assert markers[0].member_names == ("Yarn", "Time Piece")
     assert markers[0].section_ids == ((12345,), (12346,))
+
+
+def test_deferred_entrance_compatibility_mode_is_string_off():
+    """WayFinder exposes the deferred-entrance compatibility hook using its string contract."""
+    source = (Path(__file__).parents[2] / "wayfinder" / "runtime" / "world_builder.py").read_text(encoding="utf-8")
+    assert 'multiworld.enforce_deferred_connections = "off"' in source
+    assert "multiworld.enforce_deferred_connections = 1" not in source

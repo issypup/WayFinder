@@ -244,6 +244,10 @@ class NativeRuntime(NativeReliability):
             "Selective APWorld loader ready; unrelated game worlds will not be imported.",
         )
 
+        # Explicit guard: WayFinder must never import the old tracker world.
+        if "worlds.tracker" in sys.modules or "worlds.tracker.TrackerCore" in sys.modules:
+            raise RuntimeError("Legacy tracker module was imported into WayFinder native runtime; refusing to continue")
+
     # /**
     #  * Function: _make_context
     #  * Purpose: Perform the make context operation while keeping the surrounding subsystem state consistent.

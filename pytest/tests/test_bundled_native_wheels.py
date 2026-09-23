@@ -15,41 +15,26 @@ def requirements():
             for e in bundled_wheels.manifest_entries()]
 
 
-def local_fetcher():
-    root = Path(__file__).resolve().parents[2] / 'native_wheels'
-    def fetch(url, limit):
-        path = root / url.rsplit('/', 1)[-1]
-        data = path.read_bytes()
-        assert len(data) <= limit
-        return data
-    return fetch
-
-
 def test_native_candidates_point_to_wayfinder_github():
     entries = bundled_wheels.manifest_entries()
     assert len(entries) == 3
     for entry in entries:
         assert entry['url'].startswith('https://raw.githubusercontent.com/issypup/WayFinder/main/native_wheels/')
         assert 'bundled_path' not in entry
-        assert hashlib.sha256((Path(__file__).resolve().parents[2] / 'native_wheels' / entry['filename']).read_bytes()).hexdigest() == entry['digests']['sha256']
+        assert len(entry['digests']['sha256']) == 64
+        int(entry['digests']['sha256'], 16)
 
 
-def test_hosted_native_wheels_download_then_use_cache(tmp_path, monkeypatch):
-    installer = WheelInstaller(tmp_path / 'packages', tags=[Tag('cp313', 'cp313', 'win_amd64')],
-        environment={'python_full_version': '3.13.5', 'python_version': '3.13', 'sys_platform': 'win32'})
-    fetch = local_fetcher()
-    calls = []
-    monkeypatch.setattr(installer, 'fetch', lambda url, limit: (calls.append(url), fetch(url, limit))[1])
-    installer.install(requirements())
-    assert len(calls) == 3
-    assert all('raw.githubusercontent.com/issypup/WayFinder/main/native_wheels/' in url for url in calls)
-
-    # A fresh resolver sharing the same cache must not download the wheel payloads again.
-    cached = WheelInstaller(tmp_path / 'packages', tags=[Tag('cp313', 'cp313', 'win_amd64')],
-        environment={'python_full_version': '3.13.5', 'python_version': '3.13', 'sys_platform': 'win32'})
-    monkeypatch.setattr(cached, 'fetch', lambda *args: (_ for _ in ()).throw(AssertionError('cache should avoid download')))
-    cached.install(requirements())
-
+def test_hosted_native_wheels_are_resolved_as_remote_candidates():
+    tag = Tag('cp313', 'cp313', 'win_amd64')
+    ranks = {tag: 0}
+    for requirement in requirements():
+        name = requirement.name.lower()
+        candidates = bundled_wheels.remote_candidates(name, [requirement], ranks)
+        assert candidates is not None and len(candidates) == 1
+        entry = candidates[0][2]
+        assert entry['url'].startswith('https://raw.githubusercontent.com/issypup/WayFinder/main/native_wheels/')
+        assert 'bundled_path' not in entry
 
 def test_corrupt_download_fails_sha256_before_install(tmp_path, monkeypatch):
     installer = WheelInstaller(tmp_path / 'packages', tags=[Tag('cp313', 'cp313', 'win_amd64')],

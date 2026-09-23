@@ -7,7 +7,7 @@ APP=Path(__file__).resolve().parents[2]/"wayfinder"/"app"/"app.py"
 def test_installed_maps_has_own_navigation_and_page():
     """Handle test installed maps has own navigation and page."""
     source=combined_app_source()
-    assert '"Installed Maps":"▤  Installed Maps"' in source
+    assert '"Installed Maps": ("Installed Maps", "installed_maps")' in source
     assert 'def _build_installed_maps(self):' in source
     assert 'self._build_map(); self._build_installed_maps(); self._build_pack_converter()' in source
 

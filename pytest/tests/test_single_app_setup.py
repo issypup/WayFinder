@@ -10,7 +10,7 @@ RUN=ROOT/"run_wayfinder.py"
 def test_setup_tab_contains_guided_wizard_and_advanced_maintenance():
     """Handle test setup tab contains guided wizard and advanced maintenance."""
     source=combined_app_source()
-    assert '"WayFinder Setup":"⚙  WayFinder Setup"' in source
+    assert '"WayFinder Setup": ("WayFinder Setup", "setup")' in source
     wizard=source[source.index("def _render_setup_progress(self,"):source.index("def _build_diagnostics",source.index("def _render_setup_progress(self,"))]
     for label in (
         "WELCOME TO WAYFINDER",

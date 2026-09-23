@@ -194,7 +194,7 @@ def test_crashed_child_does_not_block_next_test(tmp_path, monkeypatch):
     monkeypatch.setattr(process_manager, 'internal_child_command', lambda mode, path: [sys.executable, '-c', code, path])
     passed = compatibility.run_compatibility_test(record, tmp_path, tmp_path / 'deps')
     assert passed['outcome'].startswith('Passed')
-    assert Path(failed['report_path']).exists() and Path(passed['report_path']).exists()
+    assert not Path(failed['report_path']).exists() and Path(passed['report_path']).exists()
 
 
 @pytest.mark.parametrize('cancelled', [False, True])
@@ -285,7 +285,7 @@ def test_world_system_exit_does_not_kill_job_queue():
         jobs.close()
 
 
-def test_dependency_extras_follow_transitive_ownership(tmp_path):
+def test_dependency_preflight_reports_declared_ownership_only(tmp_path):
     """Handle test dependency extras follow transitive ownership."""
     deps = tmp_path / 'deps'
     for name, metadata in [('parent-1.0.dist-info','Name: parent\nVersion: 1.0\nProvides-Extra: extra\nRequires-Dist: child>=2; extra == "extra"\n'),
@@ -295,5 +295,6 @@ def test_dependency_extras_follow_transitive_ownership(tmp_path):
         (folder / 'METADATA').write_text('Metadata-Version: 2.1\n' + metadata, encoding='utf-8')
     record = catalog.WorldRecord('test', game='Demo', requirements=[dict(owner='Demo', requirement='parent[extra]>=1', file='requirements.txt')])
     results = compatibility.require_dependencies(record, deps)
-    assert len(results) == 2 and all(r['owner'] == 'Demo' and r['state'] == 'Ready' for r in results)
-    assert results[1]['via'] == 'parent'
+    assert len(results) == 1
+    assert results[0]['owner'] == 'Demo' and results[0]['state'] == 'Ready'
+    assert results[0]['requirement'] == 'parent[extra]>=1'

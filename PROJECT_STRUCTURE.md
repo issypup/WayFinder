@@ -1,6 +1,6 @@
 # WayFinder Project Structure & Dependency Guide
 
-> Generated from the source tree for **WayFinder 1.0.0** by `tools/generate_project_structure.py`.
+> Generated from the source tree for **WayFinder unknown** by `tools/generate_project_structure.py`.
 
 # Purpose of this document
 
@@ -134,7 +134,8 @@ wayfinder/
 │   └── ignored.py
 ├── __init__.py
 ├── diagnostics.py
-└── storage.py
+├── storage.py
+└── version.py
 pytest/
 ├── .pytest_cache/
 │   ├── v/
@@ -243,9 +244,7 @@ pytest/
 ├── conftest.py
 └── pytest.ini
 tools/
-├── build_native_wheels.py
-├── generate_project_structure.py
-└── verify_native_wheels.py
+└── generate_project_structure.py
 run_wayfinder.py
 run_pytests.py
 requirements.txt
@@ -983,7 +982,7 @@ PROJECT_STRUCTURE.md
 # WayFinder-owned Archipelago tracker runtime.
 - **Module:** `wayfinder.runtime`
 - **Exports:** `RUNTIME_VERSION`
-- **Import-time internal imports:** _None._
+- **Import-time internal imports:** `wayfinder.version`
 - **Lazy/local internal imports:** _None._
 - **External / standard-library imports:** _None._
 - **Import-time importers:** `wayfinder.runtime.server`, `wayfinder.runtime.snapshot`

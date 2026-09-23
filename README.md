@@ -327,9 +327,7 @@ WayFinder/
 │   └── pytest.ini
 │
 ├── tools/
-│   ├── build_native_wheels.py
-│   ├── generate_project_structure.py
-│   └── verify_native_wheels.py
+│   └── generate_project_structure.py
 │
 ├── wayfinder/
 │   ├── app/                   # Main desktop application

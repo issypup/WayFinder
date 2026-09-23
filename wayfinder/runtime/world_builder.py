@@ -11,7 +11,8 @@ from wayfinder.utils.ignored import ignored as _ignored
 
 """Reconstruct a one-player APWorld for WayFinder.
 
-Only generic Archipelago generation primitives are used here.
+Only generic Archipelago generation primitives are used here.  No code from
+``worlds.tracker`` or ``worlds.tracker_addons`` is imported or required.
 """
 
 import json
@@ -568,9 +569,10 @@ def _build_multiworld(args: Any, seed: Any, *, game: str, slot_data: dict[str, A
     multiworld = MultiWorld(1)
     multiworld.generation_is_fake = True
     multiworld.re_gen_passthrough = {game: slot_data}
-    # Some APWorlds inspect this flag to decide whether unresolved/deferred
-    # entrances may remain disconnected during tracker reconstruction.
-    multiworld.enforce_deferred_connections = 1
+    # Compatibility hook used by APWorlds that support deferred entrance
+    # reconstruction.  This is a string-valued mode (not an integer flag);
+    # the normal/default tracker behaviour is "off".
+    multiworld.enforce_deferred_connections = "off"
     multiworld.set_seed(seed, getattr(args, "race", False), str(getattr(args, "outputname", "") or "") or None)
     multiworld.game = dict(args.game)
     multiworld.player_name = dict(args.name)

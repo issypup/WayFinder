@@ -9,14 +9,15 @@ def test_connection_and_authentication_are_part_of_ten_stage_preparation():
     assert '"connection",1,10' in source
 
 
-def test_dashboard_has_preparation_card_and_truthful_progress_modes():
+def test_dashboard_preparation_progress_follows_live_ten_stage_counter():
     """Handle test dashboard has preparation card and truthful progress modes."""
     from wayfinder.app.app import WayFinderApp
     dashboard = inspect.getsource(WayFinderApp._build_dashboard)
     panel = inspect.getsource(WayFinderApp._update_preparation_panel)
     assert 'PREPARING WAYFINDER' in dashboard
     assert 'Progressbar' in dashboard
-    assert 'indeterminate' in panel and 'determinate' in panel
+    assert 'overall_step' in panel and 'overall_total' in panel
+    assert 'self.preparation_progress.set' in panel and 'determinate' in panel
     assert 'WORLD READY' in panel
 
 

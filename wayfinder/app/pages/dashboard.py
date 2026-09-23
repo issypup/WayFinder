@@ -409,15 +409,15 @@ class DashboardPageMixin:
             elif i==step and state=="running": marker="⟳"
             else: marker="○"
             var.set(f"{marker} {name}")
-        mode=str(view.get("progress_mode","indeterminate") or "indeterminate")
-        cur=view.get("progress_current"); total=view.get("progress_total")
-        if state=="complete":
-            self.preparation_progressbar.stop(); self.preparation_progressbar.configure(mode="determinate"); self.preparation_progress.set(100.0)
-        elif mode=="determinate" and isinstance(cur,(int,float)) and isinstance(total,(int,float)) and total>0:
-            self.preparation_progressbar.stop(); self.preparation_progressbar.configure(mode="determinate")
-            self.preparation_progress.set(max(0.0,min(100.0,100.0*float(cur)/float(total))))
-        else:
-            self.preparation_progressbar.configure(mode="indeterminate"); self.preparation_progressbar.start(12)
+        # The preparation card represents the ten-stage WayFinder lifecycle, so
+        # its progress bar must follow the live stage counter rather than the
+        # per-stage progress payload (or the final completion snapshot).  The
+        # latter remains 0/10 until WORLD READY and made the GUI appear stuck.
+        overall_total=max(1,int(view.get("total",10) or 10))
+        overall_step=max(0,min(overall_total,int(view.get("step",0) or 0)))
+        self.preparation_progressbar.stop()
+        self.preparation_progressbar.configure(mode="determinate")
+        self.preparation_progress.set(max(0.0,min(100.0,100.0*float(overall_step)/float(overall_total))))
         identity=" • ".join(x for x in (game,slot) if x)
         if state=="complete":
             logic_quality="Exact" if view.get("exact_logic") else "Approximate"
@@ -429,7 +429,7 @@ class DashboardPageMixin:
         else:
             self.preparation_summary.set(message + (("\n" + identity) if identity else ""))
         details=[]
-        if isinstance(cur,(int,float)) and isinstance(total,(int,float)) and total>0: details.append(f"{int(cur)} / {int(total)}")
+        details.append(f"{overall_step} / {overall_total}")
         if "duration" in view: details.append(f"This stage: {float(view['duration']):.2f}s")
         if "elapsed" in view: details.append(f"Elapsed: {float(view['elapsed']):.2f}s")
         if "cache_hit" in view:
