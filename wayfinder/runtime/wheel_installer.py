@@ -17,6 +17,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import time
 import zipfile
 from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
@@ -427,8 +428,41 @@ class WheelInstaller:
         stage = Path(tempfile.mkdtemp(prefix=".wheel-stage-", dir=self.target.parent))
         backup = self.target.with_name(self.target.name + ".previous")
         try:
+            # Recover transactions left behind by an interrupted/previous install.
+            # If the live target disappeared after it was renamed to .previous, the
+            # backup is authoritative and must be restored before we try again.
+            # If both exist, the live target won the previous swap and .previous is
+            # only stale cleanup state; it must never block all future installs.
             if backup.exists():
-                raise InstallError(f"Previous interrupted install requires recovery: {backup}. Close WayFinder and restore/remove this backup before retrying.")
+                if not self.target.exists():
+                    self.progress(f"Recovering interrupted dependency install from {backup}")
+                    try:
+                        backup.rename(self.target)
+                    except OSError as exc:
+                        raise InstallError(
+                            f"Could not restore interrupted dependency install from {backup}: {exc}"
+                        ) from exc
+                    importlib.invalidate_caches()
+                else:
+                    self.progress(f"Cleaning stale dependency backup {backup}")
+                    shutil.rmtree(backup, ignore_errors=True)
+                    if backup.exists():
+                        # Loaded native modules can keep files open on Windows.  A
+                        # stale backup is not part of the active environment, so move
+                        # it aside instead of making it a permanent install blocker.
+                        quarantine = backup.with_name(
+                            f"{backup.name}.stale-{os.getpid()}-{time.time_ns()}"
+                        )
+                        try:
+                            backup.rename(quarantine)
+                        except OSError as exc:
+                            raise InstallError(
+                                f"Could not clear stale dependency backup {backup}: {exc}"
+                            ) from exc
+                        self.progress(
+                            f"Stale loaded dependency files moved to {quarantine}; "
+                            "they can be removed after WayFinder exits"
+                        )
             paths = {}
             for name, candidate in sorted(selected.items()):
                 previous = self._installed_selected.get(name)

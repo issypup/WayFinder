@@ -135,3 +135,40 @@ def test_audited_source_preflight_checks_provenance(tmp_path, monkeypatch):
     provenance['vcs_info']['commit_id'] = 'bad'
     path.write_text(json.dumps(provenance))
     assert dependency_preflight(record, tmp_path)[0]['state'] != 'Ready'
+
+
+def test_dolphin_memory_engine_import_maps_to_supported_native_distribution(tmp_path):
+    """Dolphin APWorld imports must resolve to the maintained native wheel."""
+    import zipfile
+
+    ap_root = tmp_path / "ap"
+    ap_root.mkdir()
+    apworld = tmp_path / "luigi.apworld"
+    with zipfile.ZipFile(apworld, "w") as archive:
+        archive.writestr("luigi/__init__.py", "import dolphin_memory_engine as dme\n")
+
+    reqs, inferred = dm._custom_world_scan(apworld, ap_root, tmp_path / "extract")
+    assert reqs == []
+    assert "dolphin-memory-engine>=1.3.1" in inferred
+    assert "dolphin_memory_engine" not in inferred
+
+
+def test_dolphin_memory_engine_mapping_is_versioned_for_python_313_native_loading():
+    """Do not regress to an unconstrained legacy DME native extension build."""
+    requirement = dm.COMMON_IMPORT_TO_DIST["dolphin_memory_engine"]
+    parsed = dm.Requirement(requirement)
+    assert parsed.name == "dolphin-memory-engine"
+    assert str(parsed.specifier) == ">=1.3.1"
+
+def test_import_resolver_uses_installed_distribution_metadata(tmp_path):
+    from wayfinder.runtime import dependency_manager as dm
+    site = tmp_path / "site"; info = site / "example_distribution-2.0.dist-info"; info.mkdir(parents=True)
+    (info / "METADATA").write_text("Metadata-Version: 2.1\nName: example-distribution\nVersion: 2.0\n", encoding="utf-8")
+    (info / "top_level.txt").write_text("weird_import_name\n", encoding="utf-8")
+    index = dm._installed_import_index(site)
+    assert index["weird_import_name"] == "example-distribution"
+    assert dm._resolve_import_requirement("weird_import_name", index) == "example-distribution"
+
+def test_known_override_wins_over_installed_metadata():
+    from wayfinder.runtime import dependency_manager as dm
+    assert dm._resolve_import_requirement("dolphin_memory_engine", {"dolphin_memory_engine": "old-dolphin-package"}) == "dolphin-memory-engine>=1.3.1"

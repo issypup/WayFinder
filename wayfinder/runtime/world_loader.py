@@ -271,6 +271,39 @@ def _iter_candidates(ap_root: Path) -> Iterable[tuple[str, Path, str]]:
 #  * @param ap_root: Ap root supplied by the caller; see type hints and call sites for domain constraints.
 #  * @returns: See the return annotation and implementation; side effects are documented inline where they occur.
 #  */
+def _apply_world_manifest_contract(world_cls: type, record: Any) -> type:
+    """Stamp Archipelago manifest metadata onto a selectively loaded World class.
+
+    Archipelago's normal world loader assigns ``World.world_version`` from
+    ``archipelago.json``.  WayFinder bypasses the global worlds-package scan,
+    so it must reproduce that loader contract before Generate validates a
+    player's ``requires.game`` constraints.
+    """
+    manifest = dict(getattr(record, "manifest", {}) or {})
+    version_text = str(manifest.get("world_version", "") or "").strip()
+    if version_text:
+        try:
+            from Utils import tuplize_version
+        except ImportError:
+            # Discovery/unit-test environments may not have an AP core on
+            # sys.path yet. Runtime preparation does, and therefore receives
+            # Archipelago's real Version object.
+            world_cls.world_version = tuple(int(part) for part in version_text.split("."))
+        else:
+            world_cls.world_version = tuplize_version(version_text)
+
+    # Match Archipelago's world-facing manifest: archive/container schema
+    # fields are loader metadata, not part of the World manifest contract.
+    world_manifest = dict(manifest)
+    world_manifest.pop("version", None)
+    world_manifest.pop("compatible_version", None)
+    if world_manifest:
+        world_cls.manifest = world_manifest
+
+    world_cls._wayfinder_manifest_version = version_text
+    return world_cls
+
+
 def ensure_game_loaded(game: str, ap_root: str | os.PathLike[str], *, selected_path=None) -> type:
     """Load exactly the World implementation that declares ``game``."""
     from worlds.AutoWorld import AutoWorldRegister
@@ -283,7 +316,7 @@ def ensure_game_loaded(game: str, ap_root: str | os.PathLike[str], *, selected_p
         previous = getattr(loaded, '_wayfinder_source_hash', None)
         if previous and previous != record.sha256:
             raise RuntimeError('APWorld changed on disk. Restart the native runtime to load the new version.')
-        return loaded
+        return _apply_world_manifest_contract(loaded, record)
     path = Path(record.path)
     kind = 'dir' if path.is_dir() else 'apworld'
     module_name = record.module
@@ -320,5 +353,5 @@ def ensure_game_loaded(game: str, ap_root: str | os.PathLike[str], *, selected_p
     loaded = AutoWorldRegister.world_types[game]
     loaded._wayfinder_source_hash = record.sha256
     loaded._wayfinder_source_path = record.path
-    loaded._wayfinder_manifest_version = record.version
+    _apply_world_manifest_contract(loaded, record)
     return loaded

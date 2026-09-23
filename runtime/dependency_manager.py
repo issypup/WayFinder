@@ -18,6 +18,7 @@ world itself.
 
 import ast
 import json
+import importlib.metadata as importlib_metadata
 from wayfinder.diagnostics import sanitize
 import os
 import re
@@ -67,6 +68,13 @@ COMMON_IMPORT_TO_DIST = {
     "websockets": "websockets",
     "requests": "requests",
     "pymem": "Pymem",
+    # Luigi's Mansion and other Dolphin-based worlds import the module name
+    # ``dolphin_memory_engine`` while the distribution is published as
+    # ``dolphin-memory-engine``.  1.3.1 switched Windows to a CPython stable-ABI
+    # wheel (cp39-abi3), which is compatible with WayFinder's Python 3.13 and
+    # avoids retaining older interpreter-specific native builds in the managed
+    # dependency directory.
+    "dolphin_memory_engine": "dolphin-memory-engine>=1.3.1",
     "pyevermizer": "pyevermizer",
     "zilliandomizer": "zilliandomizer",
     "pkg_resources": "setuptools<81",
@@ -85,6 +93,31 @@ AP_INTERNAL = {
 
 # Constant(s): `REQ_RE`; shared configuration value(s) intentionally kept stable within this module.
 REQ_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)")
+
+def _installed_import_index(target):
+    """Map import roots to installed distributions using wheel metadata."""
+    if not target or not Path(target).is_dir(): return {}
+    result = {}
+    try:
+        for dist in importlib_metadata.distributions(path=[str(Path(target))]):
+            name = dist.metadata.get("Name") or ""
+            if not name: continue
+            tops = {x.strip() for x in (dist.read_text("top_level.txt") or "").splitlines() if x.strip()}
+            if not tops:
+                for file in dist.files or ():
+                    first = str(file).replace("\\", "/").split("/")[0]
+                    if first.endswith(".py"): tops.add(first[:-3])
+                    elif "/" in str(file).replace("\\", "/") and not first.endswith((".dist-info", ".data")): tops.add(first)
+            for top in tops:
+                if top.isidentifier(): result.setdefault(top, name)
+    except Exception: pass
+    return result
+
+def _resolve_import_requirement(module, installed_index=None):
+    """Resolve an import root without assuming import-name equals distribution-name."""
+    if module in COMMON_IMPORT_TO_DIST: return COMMON_IMPORT_TO_DIST[module]
+    if module.casefold() in VCS_IMPORT_REQUIREMENTS: return module.casefold()
+    return (installed_index or {}).get(module, module)
 
 
 # /**
@@ -188,7 +221,7 @@ def _is_stdlib(module: str) -> bool:
 #  * @param extract_root: Extract root supplied by the caller; see type hints and call sites for domain constraints.
 #  * @returns: See the return annotation and implementation; side effects are documented inline where they occur.
 #  */
-def _custom_world_scan(apworld: Path, ap_root: Path, extract_root: Path) -> tuple[list[Path], set[str]]:
+def _custom_world_scan(apworld: Path, ap_root: Path, extract_root: Path, installed_index=None) -> tuple[list[Path], set[str]]:
     # Variable(s): `reqs` (reqs); named state retained for the surrounding calculation or subsequent calls.
     """Handle custom world scan."""
     reqs: list[Path] = []
@@ -228,7 +261,7 @@ def _custom_world_scan(apworld: Path, ap_root: Path, extract_root: Path) -> tupl
                 # Most distributions share their import name. Known exceptions
                 # are translated above. This fallback lets older APWorlds with
                 # undeclared third-party imports participate in one-click setup.
-                inferred.add(COMMON_IMPORT_TO_DIST.get(module, module))
+                inferred.add(_resolve_import_requirement(module, installed_index))
             # Extract any declared requirements files. Preserve their containing
             # directories so relative -r includes continue to work.
             # Loop variable(s): `n` (n); each iteration represents the next value from the iterable below.
@@ -259,6 +292,7 @@ def scan_dependencies(ap_root: str | os.PathLike[str], work_root: str | os.PathL
     # Variable(s): `root` (root); named state retained for the surrounding calculation or subsequent calls.
     """Return scan dependencies."""
     root = Path(ap_root).resolve()
+    installed_index = {}
     if work_root is None:
         # Variable(s): `work` (work); named state retained for the surrounding calculation or subsequent calls.
         work = Path(tempfile.mkdtemp(prefix="wayfinder_deps_scan_"))
@@ -305,7 +339,7 @@ def scan_dependencies(ap_root: str | os.PathLike[str], work_root: str | os.PathL
         for apworld in sorted(custom_root.glob("*.apworld")):
             custom_worlds += 1
             # Variable(s): `reqs` (reqs), `imports` (imports); named state retained for the surrounding calculation or subsequent calls.
-            reqs, imports = _custom_world_scan(apworld, root, work / "custom_requirements")
+            reqs, imports = _custom_world_scan(apworld, root, work / "custom_requirements", installed_index)
             custom_files.extend(str(p) for p in reqs)
             inferred.update(imports)
 
@@ -503,6 +537,8 @@ def install_all_dependencies(ap_root: str | os.PathLike[str], target: str | os.P
                 pass
     target_path.mkdir(parents=True, exist_ok=True)
     scan, work = scan_dependencies(root)
+    installed_index = _installed_import_index(target_path)
+    scan.custom_inferred_packages = sorted({_resolve_import_requirement(r, installed_index) for r in scan.custom_inferred_packages}, key=str.casefold)
 
     print(f"WayFinder dependency scan: {scan.builtin_worlds} built-in worlds, {scan.custom_worlds} custom APWorlds", flush=True)
     print(f"Declared requirement files: {scan.requirement_file_count}", flush=True)

@@ -22,8 +22,20 @@ def activate_dependencies(target, position=1):
     # Retain handles: Windows native libraries must remain discoverable after
     # activation returns. pywin32's own .pth hook also runs below.
     dll_path = Path(root) / 'pywin32_system32'
-    if os.name == 'nt' and dll_path.is_dir():
-        _dll_handles.append(os.add_dll_directory(str(dll_path)))
+    if os.name == 'nt':
+        # Register managed directories that contain native binaries. This covers
+        # package-local .dll/.pyd layouts without game-specific DLL rules.
+        candidates = {Path(root)}
+        if dll_path.is_dir(): candidates.add(dll_path)
+        try:
+            for native in Path(root).rglob('*'):
+                if native.is_file() and native.suffix.casefold() in {'.pyd', '.dll'}:
+                    candidates.add(native.parent)
+        except OSError:
+            pass
+        for candidate in sorted(candidates, key=lambda p: (len(p.parts), str(p).casefold())):
+            try: _dll_handles.append(os.add_dll_directory(str(candidate)))
+            except (FileNotFoundError, OSError): pass
     site.addsitedir(root)
     added = [p for p in sys.path if p not in before]
     # Preserve the old application/core ordering, but keep installed .pth paths

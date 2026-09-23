@@ -320,3 +320,31 @@ def test_cumulative_install_reuses_unchanged_wheels(tmp_path, monkeypatch):
     assert 'Installing alpha 1.0' not in messages
     assert (ins.target / 'alpha/__init__.py').exists()
     assert (ins.target / 'beta/__init__.py').exists()
+
+
+def test_stale_previous_backup_does_not_block_future_install(tmp_path, monkeypatch):
+    """A completed swap with leftover .previous is cleanup state, not a fatal error."""
+    ins, _ = installer(tmp_path, monkeypatch, [wheel("alpha")])
+    ins.target.mkdir(parents=True)
+    (ins.target / "live.txt").write_text("live", encoding="utf-8")
+    backup = ins.target.with_name(ins.target.name + ".previous")
+    backup.mkdir()
+    (backup / "old.txt").write_text("old", encoding="utf-8")
+
+    ins.install([Requirement("alpha")])
+
+    assert (ins.target / "alpha/__init__.py").exists()
+    assert not backup.exists()
+
+
+def test_interrupted_swap_restores_previous_before_retry(tmp_path, monkeypatch):
+    """If only .previous survived a crash, restore it and then retry transactionally."""
+    ins, _ = installer(tmp_path, monkeypatch, [wheel("alpha")])
+    backup = ins.target.with_name(ins.target.name + ".previous")
+    backup.mkdir(parents=True)
+    (backup / "recovered.txt").write_text("previous generation", encoding="utf-8")
+
+    ins.install([Requirement("alpha")])
+
+    assert (ins.target / "alpha/__init__.py").exists()
+    assert not backup.exists()

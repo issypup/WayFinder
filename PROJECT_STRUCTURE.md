@@ -141,6 +141,7 @@ pytest/
 ├── .pytest_cache/
 │   ├── v/
 │   │   └── cache/
+│   │       ├── lastfailed
 │   │       └── nodeids
 │   ├── .gitignore
 │   ├── CACHEDIR.TAG
@@ -239,6 +240,7 @@ pytest/
 │   ├── test_unified_typography.py
 │   ├── test_user_initiated_connect_persistence.py
 │   ├── test_wheel_installer.py
+│   ├── test_world_manifest_contract.py
 │   ├── test_world_preparation_ui_01464.py
 │   └── test_zoom_floor_01475.py
 ├── conftest.py
@@ -1039,7 +1041,7 @@ PROJECT_STRUCTURE.md
 - **Exports:** `AP_INTERNAL`, `COMMON_IMPORT_TO_DIST`, `DependencyScan`, `REQ_RE`, `VCS_IMPORT_REQUIREMENTS`, `dependency_report_ok`, `format_dependency_failure_report`, `install_all_dependencies`, `load_dependency_report`, `scan_dependencies`, `write_scan_report`
 - **Import-time internal imports:** `wayfinder.diagnostics`, `wayfinder.runtime.wheel_installer`
 - **Lazy/local internal imports:** _None._
-- **External / standard-library imports:** `ast`, `dataclasses`, `json`, `os`, `packaging.requirements`, `packaging.utils`, `pathlib`, `re`, `shutil`, `sys`, `tempfile`, `typing`, `zipfile`
+- **External / standard-library imports:** `ast`, `dataclasses`, `importlib`, `json`, `os`, `packaging.requirements`, `packaging.utils`, `pathlib`, `re`, `shutil`, `sys`, `tempfile`, `typing`, `zipfile`
 - **Import-time importers:** `wayfinder.setup`, `wayfinder.setup.dependencies`
 - **Lazy/local importers:** `wayfinder.app.controllers.setup_controller`, `wayfinder.runtime.apworld_catalog`
 - **Dependency direction:** One-way at import-time level.
@@ -1149,7 +1151,7 @@ PROJECT_STRUCTURE.md
 - **Exports:** `FileRequirement`, `InstallError`, `ResolutionError`, `WheelInstaller`, `read_requirements`, `runtime_diagnostics`
 - **Import-time internal imports:** `wayfinder.runtime.bundled_wheels`, `wayfinder.runtime.source_recipes`
 - **Lazy/local internal imports:** _None._
-- **External / standard-library imports:** `base64`, `csv`, `email`, `hashlib`, `importlib`, `io`, `json`, `os`, `packaging.markers`, `packaging.requirements`, `packaging.specifiers`, `packaging.tags`, `packaging.utils`, `packaging.version`, `pathlib`, `re`, `shutil`, `stat`, `sys`, `tempfile`, `urllib`, `zipfile`
+- **External / standard-library imports:** `base64`, `csv`, `email`, `hashlib`, `importlib`, `io`, `json`, `os`, `packaging.markers`, `packaging.requirements`, `packaging.specifiers`, `packaging.tags`, `packaging.utils`, `packaging.version`, `pathlib`, `re`, `shutil`, `stat`, `sys`, `tempfile`, `time`, `urllib`, `zipfile`
 - **Import-time importers:** `wayfinder.runtime.dependency_manager`
 - **Lazy/local importers:** _None._
 - **Dependency direction:** One-way at import-time level.
@@ -1171,7 +1173,7 @@ PROJECT_STRUCTURE.md
 - **Exports:** `ensure_game_loaded`, `install_minimal_worlds_package`
 - **Import-time internal imports:** `wayfinder.utils.ignored`
 - **Lazy/local internal imports:** `wayfinder.runtime.apworld_catalog`
-- **External / standard-library imports:** `ast`, `importlib`, `json`, `logging`, `os`, `pathlib`, `sys`, `types`, `typing`, `worlds.AutoWorld`, `zipfile`, `zipimport`
+- **External / standard-library imports:** `Utils`, `ast`, `importlib`, `json`, `logging`, `os`, `pathlib`, `sys`, `types`, `typing`, `worlds.AutoWorld`, `zipfile`, `zipimport`
 - **Import-time importers:** `wayfinder.runtime.server`
 - **Lazy/local importers:** `wayfinder.runtime.apworld_compatibility`, `wayfinder.runtime.native_reliability`
 - **Dependency direction:** One-way at import-time level.
