@@ -651,6 +651,82 @@ def _build_multiworld(args: Any, seed: Any, *, game: str, slot_data: dict[str, A
 #  */
 
 
+def _slot_data_entrance_mappings(slot_data: dict[str, Any]) -> list[tuple[str, dict[str, str]]]:
+    """Return conservative seed-specific entrance mappings exposed by Connected slot_data.
+
+    APWorlds use different field names, so WayFinder does not hard-code a game.  A
+    mapping is considered entrance topology only when its container key itself says
+    entrance/portal/warp and its contents are string -> string pairs.  The mapping is
+    still validated against the reconstructed AP graph before it can change anything.
+    """
+    found: list[tuple[str, dict[str, str]]] = []
+    if not isinstance(slot_data, dict):
+        return found
+    semantic = ("entrance", "portal", "warp")
+    for key, value in slot_data.items():
+        label = str(key or "")
+        folded = label.casefold().replace("-", "_").replace(" ", "_")
+        if not any(token in folded for token in semantic) or not isinstance(value, dict):
+            continue
+        pairs = {str(k): str(v) for k, v in value.items() if isinstance(k, str) and isinstance(v, str) and k and v}
+        if pairs:
+            found.append((label, pairs))
+    return found
+
+
+def _apply_seed_entrance_topology(multiworld: Any, player: int, slot_data: dict[str, Any]) -> list[str]:
+    """Overlay authoritative seed entrance destinations from Connected slot_data.
+
+    Reconstruction may execute an APWorld's entrance randomizer again.  That produces
+    a valid graph, but not necessarily *this seed's* graph.  When the server explicitly
+    supplies an entrance mapping, match it to real AP Entrance and Region objects and
+    reconnect only exact, unambiguous pairs.  Unknown/unmatched data is ignored rather
+    than guessed, making this safe for APWorlds with unrelated entrance metadata.
+    """
+    candidates = _slot_data_entrance_mappings(slot_data)
+    if not candidates:
+        return []
+    regions = {str(getattr(r, "name", "") or ""): r for r in getattr(multiworld, "regions", []) if getattr(r, "player", player) == player}
+    entrances = []
+    for region in getattr(multiworld, "regions", []):
+        if getattr(region, "player", player) != player:
+            continue
+        entrances.extend(list(getattr(region, "exits", []) or []))
+
+    # APWorlds often render the destination into the runtime Entrance name, e.g.
+    # "Dungeon Entrance on X -> Wind Temple".  Slot data normally keys the stable
+    # entrance identity, so accept that exact prefix in addition to the full name.
+    by_identity: dict[str, list[Any]] = {}
+    for entrance in entrances:
+        full = str(getattr(entrance, "name", "") or "")
+        identities = {full}
+        if " -> " in full:
+            identities.add(full.split(" -> ", 1)[0])
+        for identity in identities:
+            by_identity.setdefault(identity, []).append(entrance)
+
+    applied: list[str] = []
+    seen_objects: set[int] = set()
+    for field, mapping in candidates:
+        for entrance_name, target_name in mapping.items():
+            matches = by_identity.get(entrance_name, [])
+            target = regions.get(target_name)
+            if len(matches) != 1 or target is None:
+                continue
+            entrance = matches[0]
+            marker = id(entrance)
+            if marker in seen_objects:
+                continue
+            seen_objects.add(marker)
+            previous = str(getattr(getattr(entrance, "connected_region", None), "name", "") or "")
+            if previous != target_name:
+                # BaseClasses.Entrance.connect simply replaces connected_region in
+                # supported AP versions; assignment is the most version-tolerant form.
+                entrance.connected_region = target
+            applied.append(f"{entrance_name}: {previous or '?'} -> {target_name} [{field}]")
+    return applied
+
+
 def _install_world_rule_safety_guards(world: Any, multiworld: Any, player: int = 1) -> list[str]:
     """Install narrow safety guards for APWorld rules known to be under-reconstructed.
 
@@ -826,6 +902,12 @@ def build_world(game: str, slot_name: str, slot_data: dict[str, Any], *, player_
             # Variable(s): `world` (world); named state retained for the surrounding calculation or subsequent calls.
             world = multiworld.worlds[1]
             installed_rule_guards = _install_world_rule_safety_guards(world, multiworld, 1)
+            seed_entrance_overrides = _apply_seed_entrance_topology(multiworld, 1, dict(slot_data or {}))
+            if seed_entrance_overrides:
+                logging.getLogger(__name__).info(
+                    "Applied %d authoritative seed entrance connection(s) from Connected slot_data for %s: %s",
+                    len(seed_entrance_overrides), game, "; ".join(seed_entrance_overrides),
+                )
             if installed_rule_guards:
                 logging.getLogger(__name__).info(
                     "Installed %d conservative APWorld rule guard(s) for %s: %s",

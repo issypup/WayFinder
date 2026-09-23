@@ -1,5 +1,4 @@
 """Connection inspector with packet evidence and paged value browsers."""
-import json
 import time
 import tkinter as tk
 from tkinter import ttk
@@ -129,6 +128,9 @@ class APInspectorUI:
             age=max(0,int(time.time()-value['latency_time'])) if value.get('latency_time') else None
             latency_text='Not measured — use Measure latency' if latency is None else f'{latency} ms (measured {age}s ago)'
             activity=value.get('activity',{})
+            resync=value.get('resync',{})
+            resync_state=resync.get('state','Not requested') if isinstance(resync,dict) else str(resync or 'Not requested')
+            issues=value.get('errors',[])
             lines=[f"Connection: {value.get('state')}\nGame: {value.get('game')}\nSlot: {value.get('slot_name')}",
                    f"\nLatency: {latency_text}\n{value.get('latency_basis','')}",
                    f"Packets in last 10 seconds: {activity.get('inbound_10s',0)} received / {activity.get('outbound_10s',0)} sent",
@@ -137,9 +139,12 @@ class APInspectorUI:
                    '\nAPWORLD-DERIVED STATE',f"World reconstructed: {derived.get('reconstructed',False)}; authoritative logic: {derived.get('exact_logic',False)}",f"Logic source: {derived.get('logic_source','Unknown')}",
                    '\nWAYFINDER INFERENCE',f"Reachability available: {derived.get('reachability',False)}; snapshot generation: {derived.get('snapshot_generation',0)}",
                    'Map matching, progression candidates and discrepancy comparisons are calculated by WayFinder.',
-                   '\nRESYNCHRONISATION',json.dumps(value.get('resync',{}),indent=2),
+                   '\nRESYNCHRONISATION',f"State: {resync_state}",
                    '\nRECENT PROTOCOL ISSUES']
-            lines.extend(issue['message'] for issue in value.get('errors',[]))
+            if issues:
+                lines.extend(issue.get('message','Unknown protocol issue') for issue in issues)
+            else:
+                lines.append('None since authentication.' if value.get('state')=='Authenticated' else 'None recorded.')
             self._api_write(self.api_overview,'\n'.join(lines))
             self._api_render_packets()
             if not comparison.get('authoritative'):status='Awaiting a Connected baseline; comparison unavailable.'

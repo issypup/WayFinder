@@ -152,6 +152,7 @@ pytest/
 │   ├── test_appearance_settings_atomic_write_01473.py
 │   ├── test_apworld_catalog_01453.py
 │   ├── test_apworld_current_map_fallback.py
+│   ├── test_build_stable_abi.py
 │   ├── test_bundled_native_wheels.py
 │   ├── test_compact_run_overview.py
 │   ├── test_comparison_aware_prog_items.py
@@ -175,6 +176,7 @@ pytest/
 │   ├── test_frlg_strength_and_checked_state_01443.py
 │   ├── test_generic_nonprogression_map_status_01439.py
 │   ├── test_generic_poptracker_live_map_conversion.py
+│   ├── test_generic_seed_entrance_topology.py
 │   ├── test_generic_untracked_map_status_01441.py
 │   ├── test_goal_backtracking_01419.py
 │   ├── test_grouped_marker_status_resolution_01436.py
@@ -492,7 +494,7 @@ PROJECT_STRUCTURE.md
 - **Exports:** `APInspectorUI`
 - **Import-time internal imports:** `wayfinder.connection.ap_inspector`, `wayfinder.diagnostics`
 - **Lazy/local internal imports:** _None._
-- **External / standard-library imports:** `json`, `time`, `tkinter`
+- **External / standard-library imports:** `time`, `tkinter`
 - **Import-time importers:** `wayfinder.app.ui.apworld_ui`
 - **Lazy/local importers:** _None._
 - **Dependency direction:** One-way at import-time level. GUI mixins may additionally share callback/state contracts through `WayFinderApp`.

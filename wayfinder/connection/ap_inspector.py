@@ -109,6 +109,10 @@ class APInspector:
         self.activity.append((time.monotonic(),direction))
         if direction!='IN':return
         if cmd=='Connected':
+            # The Overview describes the health of the authenticated session.
+            # Keep pre-authentication failures in packet history, but do not present
+            # them as current protocol issues after a successful login.
+            self.errors.clear()
             self.state='Authenticated';self.expected_index=0;self.item_state='Awaiting full inventory'
             self.checked={v for v in args.get('checked_locations',[]) if type(v) is int}
             self.locations=self.checked|{v for v in args.get('missing_locations',[]) if type(v) is int}

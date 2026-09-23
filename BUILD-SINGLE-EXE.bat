@@ -27,6 +27,24 @@ if errorlevel 1 (
 )
 set "PY=py -3.13"
 
+rem Stable-ABI extension modules (for example dolphin-memory-engine) link
+rem against python3.dll rather than python313.dll. PyInstaller does not always
+rem collect this forwarding DLL for one-file builds, so locate and bundle the
+rem DLL from the exact Python installation used to build WayFinder.
+for /f "usebackq delims=" %%I in (`%PY% -c "import pathlib,sys; p=pathlib.Path(sys.base_prefix)/'python3.dll'; print(p if p.is_file() else '')"`) do set "PYTHON3_DLL=%%I"
+if not defined PYTHON3_DLL (
+  echo ERROR: python3.dll was not found beside the Python 3.13 installation.
+  echo Stable-ABI native APWorld dependencies would fail inside WayFinder.exe.
+  pause
+  exit /b 1
+)
+if not exist "%PYTHON3_DLL%" (
+  echo ERROR: Stable-ABI runtime DLL not found: %PYTHON3_DLL%
+  pause
+  exit /b 1
+)
+echo Stable-ABI runtime: %PYTHON3_DLL%
+
 %PY% -m pip --version >nul 2>nul
 if errorlevel 1 (
   echo ERROR: pip is unavailable.
@@ -82,6 +100,7 @@ echo [3/4] Building WayFinder.exe with live debug console...
   --add-data "assets\wayfinder.ico;assets" ^
   --add-data "assets\wayfinder_icon_master.png;assets" ^
   --add-data "assets\sidebar;assets\sidebar" ^
+  --add-binary "%PYTHON3_DLL%;." ^
   --hidden-import pkgutil ^
   --hidden-import importlib.metadata ^
   run_wayfinder.py

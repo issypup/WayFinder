@@ -10,32 +10,72 @@ import sys
 
 _activated = set()
 _dll_handles = []
+_dll_directories = []
+
+
+def _native_directories(root: Path):
+    """Return managed directories that can participate in Windows DLL loading."""
+    candidates = {root}
+    pywin32 = root / "pywin32_system32"
+    if pywin32.is_dir():
+        candidates.add(pywin32)
+    try:
+        for native in root.rglob("*"):
+            if native.is_file() and native.suffix.casefold() in {".pyd", ".dll"}:
+                candidates.add(native.parent)
+    except OSError:
+        pass
+    return sorted(candidates, key=lambda p: (len(p.parts), str(p).casefold()))
+
+
+def _activate_windows_native_search(root: Path):
+    """Expose managed native-library folders to frozen and normal Python."""
+    if os.name != "nt":
+        return
+
+    directories = _native_directories(root)
+    # os.add_dll_directory is the primary CPython 3.8+ mechanism. Keep every
+    # handle alive for the runtime lifetime or Windows removes the directory.
+    for candidate in directories:
+        text = str(candidate)
+        if text in _dll_directories:
+            continue
+        try:
+            _dll_handles.append(os.add_dll_directory(text))
+            _dll_directories.append(text)
+        except (FileNotFoundError, OSError):
+            pass
+
+    # Frozen applications can load a .pyd successfully and then have that
+    # extension (or a DLL it loads itself) use the process PATH to resolve a
+    # sibling DLL. PyInstaller's one-file bootstrap does not know about
+    # WayFinder's external managed package tree, so mirror the same directories
+    # into PATH. This is deliberately generic rather than APWorld-specific.
+    current = os.environ.get("PATH", "")
+    existing = {p.casefold() for p in current.split(os.pathsep) if p}
+    prepend = []
+    for candidate in directories:
+        text = str(candidate)
+        if text.casefold() not in existing:
+            prepend.append(text)
+            existing.add(text.casefold())
+    if prepend:
+        os.environ["PATH"] = os.pathsep.join(prepend + ([current] if current else []))
 
 
 def activate_dependencies(target, position=1):
-    root = str(Path(target).resolve())
+    root_path = Path(target).resolve()
+    root = str(root_path)
     if root not in sys.path:
         sys.path.insert(position, root)
+
+    # Refresh native search paths even after Python-path activation. Managed
+    # packages may have been installed/updated since the runtime first started.
+    _activate_windows_native_search(root_path)
     if root in _activated:
         return
+
     before = list(sys.path)
-    # Retain handles: Windows native libraries must remain discoverable after
-    # activation returns. pywin32's own .pth hook also runs below.
-    dll_path = Path(root) / 'pywin32_system32'
-    if os.name == 'nt':
-        # Register managed directories that contain native binaries. This covers
-        # package-local .dll/.pyd layouts without game-specific DLL rules.
-        candidates = {Path(root)}
-        if dll_path.is_dir(): candidates.add(dll_path)
-        try:
-            for native in Path(root).rglob('*'):
-                if native.is_file() and native.suffix.casefold() in {'.pyd', '.dll'}:
-                    candidates.add(native.parent)
-        except OSError:
-            pass
-        for candidate in sorted(candidates, key=lambda p: (len(p.parts), str(p).casefold())):
-            try: _dll_handles.append(os.add_dll_directory(str(candidate)))
-            except (FileNotFoundError, OSError): pass
     site.addsitedir(root)
     added = [p for p in sys.path if p not in before]
     # Preserve the old application/core ordering, but keep installed .pth paths

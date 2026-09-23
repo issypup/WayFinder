@@ -110,3 +110,30 @@ def test_unreviewed_source_extras_are_rejected(tmp_path, monkeypatch):
     ins, recipe = make_source(tmp_path, monkeypatch)
     with pytest.raises(InstallError, match='Source/direct URL'):
         ins.install([Requirement('demo[unknown] @ git+https://github.com/example/demo@' + recipe['commit'])])
+
+
+def test_windows_native_activation_registers_dll_dirs_and_path(tmp_path, monkeypatch):
+    root = tmp_path / "packages"
+    native = root / "demo" / "bin"
+    native.mkdir(parents=True)
+    (native / "demo.pyd").write_bytes(b"")
+    handles = []
+    monkeypatch.setattr(dependency_path.os, "name", "nt")
+    monkeypatch.setattr(dependency_path.os, "add_dll_directory", lambda p: handles.append(p) or object(), raising=False)
+    monkeypatch.setattr(dependency_path, "_dll_handles", [])
+    monkeypatch.setattr(dependency_path, "_dll_directories", [])
+    monkeypatch.setenv("PATH", "C:\\Windows")
+    dependency_path._activate_windows_native_search(root)
+    assert str(native) in handles
+    assert str(native) in dependency_path.os.environ["PATH"].split(dependency_path.os.pathsep)
+
+
+def test_reactivation_refreshes_native_search_after_install(tmp_path, monkeypatch):
+    root = tmp_path / "packages"
+    root.mkdir()
+    monkeypatch.setattr(dependency_path, "_activated", set())
+    calls = []
+    monkeypatch.setattr(dependency_path, "_activate_windows_native_search", lambda p: calls.append(p))
+    dependency_path.activate_dependencies(root)
+    dependency_path.activate_dependencies(root)
+    assert calls == [root.resolve(), root.resolve()]
