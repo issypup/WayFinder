@@ -696,8 +696,41 @@ def test_poptracker_converter_imports_nested_autotracking_location_ids(tmp_path)
     assert markers[0].section_ids == ((12345,), (12346,))
 
 
-def test_deferred_entrance_compatibility_mode_is_string_off():
-    """WayFinder exposes the deferred-entrance compatibility hook using its string contract."""
+def test_deferred_entrance_compatibility_contract_is_centralized_and_typed():
+    """Keep tracker string modes and CollectionState partial-entrance behavior coupled."""
+    from wayfinder.runtime.tracker_contracts import (
+        DeferredEntranceMode,
+        apply_deferred_entrance_contract,
+        deferred_entrances_allow_partial,
+        normalize_deferred_entrance_mode,
+    )
+
+    class DummyMultiWorld:
+        pass
+
+    multiworld = DummyMultiWorld()
+    mode = apply_deferred_entrance_contract(multiworld)
+    assert mode is DeferredEntranceMode.DISABLED
+    assert multiworld.enforce_deferred_connections == "off"
+    assert isinstance(multiworld.enforce_deferred_connections, str)
+    assert deferred_entrances_allow_partial(mode) is False
+    assert deferred_entrances_allow_partial("off") is False
+    assert deferred_entrances_allow_partial("default") is True
+    assert deferred_entrances_allow_partial("on") is True
+
+    import pytest
+    with pytest.raises(TypeError):
+        normalize_deferred_entrance_mode(1)
+    with pytest.raises(TypeError):
+        normalize_deferred_entrance_mode(True)
+    with pytest.raises(ValueError):
+        normalize_deferred_entrance_mode("enabled")
+
+
+def test_world_builder_derives_collection_state_from_deferred_mode():
+    """Prevent the tracker mode and CollectionState boolean from drifting independently."""
     source = (Path(__file__).parents[2] / "wayfinder" / "runtime" / "world_builder.py").read_text(encoding="utf-8")
-    assert 'multiworld.enforce_deferred_connections = "off"' in source
-    assert "multiworld.enforce_deferred_connections = 1" not in source
+    assert "apply_deferred_entrance_contract" in source
+    assert "deferred_entrances_allow_partial(deferred_entrance_mode)" in source
+    assert "enforce_deferred_connections = 1" not in source
+    assert "CollectionState(multiworld, True)" not in source

@@ -27,6 +27,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from wayfinder.runtime.tracker_contracts import (
+    DeferredEntranceMode,
+    apply_deferred_entrance_contract,
+    deferred_entrances_allow_partial,
+)
+
 
 # /**
 #  * Class: BuiltWorld
@@ -569,10 +575,11 @@ def _build_multiworld(args: Any, seed: Any, *, game: str, slot_data: dict[str, A
     multiworld = MultiWorld(1)
     multiworld.generation_is_fake = True
     multiworld.re_gen_passthrough = {game: slot_data}
-    # Compatibility hook used by APWorlds that support deferred entrance
-    # reconstruction.  This is a string-valued mode (not an integer flag);
-    # the normal/default tracker behaviour is "off".
-    multiworld.enforce_deferred_connections = "off"
+    # Keep the tracker-facing string enum and Archipelago CollectionState
+    # boolean derived from the same validated mode so the contracts cannot drift.
+    deferred_entrance_mode = apply_deferred_entrance_contract(
+        multiworld, DeferredEntranceMode.DISABLED
+    )
     multiworld.set_seed(seed, getattr(args, "race", False), str(getattr(args, "outputname", "") or "") or None)
     multiworld.game = dict(args.game)
     multiworld.player_name = dict(args.name)
@@ -608,7 +615,9 @@ def _build_multiworld(args: Any, seed: Any, *, game: str, slot_data: dict[str, A
             ),
         )
 
-    multiworld.state = CollectionState(multiworld, True)
+    multiworld.state = CollectionState(
+        multiworld, deferred_entrances_allow_partial(deferred_entrance_mode)
+    )
 
     # Loop variable(s): `step` (step); each iteration represents the next value from the iterable below.
     for step in _generation_steps():

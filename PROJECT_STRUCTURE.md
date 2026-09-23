@@ -118,6 +118,7 @@ wayfinder/
 │   ├── server.py
 │   ├── snapshot.py
 │   ├── source_recipes.py
+│   ├── tracker_contracts.py
 │   ├── wheel_installer.py
 │   ├── world_builder.py
 │   └── world_loader.py
@@ -140,7 +141,6 @@ pytest/
 ├── .pytest_cache/
 │   ├── v/
 │   │   └── cache/
-│   │       ├── lastfailed
 │   │       └── nodeids
 │   ├── .gitignore
 │   ├── CACHEDIR.TAG
@@ -1132,6 +1132,17 @@ PROJECT_STRUCTURE.md
 - **Lazy/local importers:** `wayfinder.runtime.apworld_compatibility`
 - **Dependency direction:** One-way at import-time level.
 
+### `wayfinder/runtime/tracker_contracts.py`
+# Compatibility contracts exposed to tracker-aware APWorlds.
+- **Module:** `wayfinder.runtime.tracker_contracts`
+- **Exports:** `DeferredEntranceMode`, `apply_deferred_entrance_contract`, `deferred_entrances_allow_partial`, `normalize_deferred_entrance_mode`
+- **Import-time internal imports:** _None._
+- **Lazy/local internal imports:** _None._
+- **External / standard-library imports:** `enum`, `typing`
+- **Import-time importers:** `wayfinder.runtime.world_builder`
+- **Lazy/local importers:** _None._
+- **Dependency direction:** One-way at import-time level.
+
 ### `wayfinder/runtime/wheel_installer.py`
 # Wheel-only dependency installation; never executes package build/install code.
 - **Module:** `wayfinder.runtime.wheel_installer`
@@ -1147,7 +1158,7 @@ PROJECT_STRUCTURE.md
 # Provide world builder support.
 - **Module:** `wayfinder.runtime.world_builder`
 - **Exports:** `BuiltWorld`, `build_world`
-- **Import-time internal imports:** `wayfinder.utils.ignored`
+- **Import-time internal imports:** `wayfinder.runtime.tracker_contracts`, `wayfinder.utils.ignored`
 - **Lazy/local internal imports:** `wayfinder.storage`
 - **External / standard-library imports:** `BaseClasses`, `Generate`, `dataclasses`, `json`, `logging`, `os`, `pathlib`, `re`, `settings`, `sys`, `tempfile`, `time`, `typing`, `worlds`, `worlds.AutoWorld`, `worlds.generic.Rules`, `yaml`, `zipfile`
 - **Import-time importers:** `wayfinder.runtime.server`
