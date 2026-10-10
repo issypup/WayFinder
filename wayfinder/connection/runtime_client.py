@@ -1240,6 +1240,10 @@ class WayFinderRuntimeClient:
     #  * Purpose: Refresh state from the latest available state.
     #  * @returns: See the return annotation and implementation; side effects are documented inline where they occur.
     #  */
+    def set_entrance_mode(self, mode: str) -> bool:
+        """Set the spoiler-safe entrance discovery policy for the active seed."""
+        return self._send({"cmd": "entrance_mode", "mode": mode})
+
     def discover_entrance(self, entrance: str, destination: str) -> bool:
         """Record a player-discovered entrance destination for the active seed."""
         return self._send({"cmd":"entrance_discover","entrance":str(entrance),"destination":str(destination)})

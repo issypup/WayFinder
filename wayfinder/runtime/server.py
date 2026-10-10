@@ -986,6 +986,19 @@ class NativeRuntime(NativeReliability):
             self.jobs.cancel()
             self.connection_id=str(msg.get('connection_id') or self.connection_id)
             self.schedule(self.disconnect_ap())
+        elif cmd == "entrance_mode":
+            from .entrance_knowledge import set_mode
+            built = self.built
+            key = str(getattr(built, "_wayfinder_cache_key", "") or "") if built else ""
+            mode = str(msg.get("mode", ""))
+            if not key or mode not in ("user_specifies", "automatic_discovery"):
+                self.send_error("WF_ENTRANCE_MODE_INVALID", "An active seed and valid discovery mode are required.", component="Entrances")
+            else:
+                set_mode(key, mode)
+                for attr in ("_wayfinder_logic_evaluator", "_wayfinder_glitch_logic_evaluator"):
+                    if hasattr(built, attr): delattr(built, attr)
+                self.send_log(f"[ENTRANCE] Discovery mode: {mode}")
+                self.publish()
         elif cmd == "entrance_discover":
             entrance=str(msg.get("entrance","") or "").strip(); destination=str(msg.get("destination","") or "").strip()
             built=self.built

@@ -775,6 +775,8 @@ def build_snapshot(ctx: Any, built: Any, *, ignored_names: set[str] | None = Non
     entrance_rando = _entrance_randomization_enabled(world)
     entrance_decoupled = _entrance_decoupled(world)
     entrance_knowledge = getattr(built, "_wayfinder_entrance_knowledge", {}) or {}
+    from .entrance_knowledge import visible_knowledge, get_mode
+    entrance_knowledge = visible_knowledge(entrance_knowledge, get_mode(str(getattr(built, "_wayfinder_cache_key", "") or "")))
     hidden_entrance_targets = []
     if entrance_rando is True:
         regions_by_name={str(getattr(r,"name","") or ""):r for r in getattr(multiworld,"regions",[]) or [] if int(getattr(r,"player",player) or player)==player}

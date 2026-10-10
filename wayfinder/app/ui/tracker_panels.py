@@ -138,6 +138,13 @@ class TrackerPanelsMixin:
         p=self._page("Entrances"); h=ttk.Frame(p); h.pack(fill="x",pady=(4,8)); ttk.Label(h,text="Entrances & Traversal",style="Title.TLabel").pack(side="left")
         # Variable(s): `e` (e); named state retained for the surrounding calculation or subsequent calls.
         self.entrance_search=tk.StringVar(); e=ttk.Entry(h,textvariable=self.entrance_search,width=32); e.pack(side="right"); e.bind("<KeyRelease>",lambda _e:self._refresh_entrances())
+        mode_bar=ttk.Frame(p); mode_bar.pack(fill="x",pady=(0,7))
+        ttk.Label(mode_bar,text="Entrance Discovery Mode:").pack(side="left",padx=(0,8))
+        self.entrance_discovery_mode=tk.StringVar(value="User Specifies")
+        mode_picker=ttk.Combobox(mode_bar,textvariable=self.entrance_discovery_mode,
+            values=("User Specifies", "WayFinder Discovers Automatically"),state="readonly",width=35)
+        mode_picker.pack(side="left")
+        mode_picker.bind("<<ComboboxSelected>>",self._change_entrance_discovery_mode)
         self.entrance_tree=ttk.Treeview(p,columns=("Entrance","Source","Destination","Status","Requirements"),show="headings")
         # Loop variable(s): `c` (c), `w` (width/widget value (context dependent)); each iteration represents the next value from the iterable below.
         for c,w in (("Entrance",330),("Source",220),("Destination",220),("Status",110),("Requirements",380)): self.entrance_tree.heading(c,text=c); self.entrance_tree.column(c,width=w,anchor="w")
@@ -146,7 +153,13 @@ class TrackerPanelsMixin:
         ttk.Button(controls,text="Set Discovered Destination",command=self._set_discovered_entrance).pack(side="left")
         ttk.Button(controls,text="Forget Mapping",command=self._forget_discovered_entrance).pack(side="left",padx=(6,0))
         self.entrance_summary=tk.StringVar(value="Waiting for generated entrance graph."); ttk.Label(p,textvariable=self.entrance_summary,style="Muted.TLabel").pack(anchor="w",pady=(6,0))
-        ttk.Label(p,text="Randomized entrances use player knowledge: unknown destinations stay hidden from progression logic until AP legitimately exposes them or you fill them in here.",style="Muted.TLabel",wraplength=1100).pack(anchor="w",pady=(3,0))
+        ttk.Label(p,text="Unknown destinations stay hidden. Automatic mode only reveals mappings when reliable traversal evidence is available; it never guesses.",style="Muted.TLabel",wraplength=1100).pack(anchor="w",pady=(3,0))
+    def _change_entrance_discovery_mode(self, _event=None):
+        mode = ("automatic_discovery" if self.entrance_discovery_mode.get() == "WayFinder Discovers Automatically"
+                else "user_specifies")
+        if not self.runtime_client.set_entrance_mode(mode):
+            messagebox.showwarning("Entrance discovery", "Connect to a reconstructed seed before changing its discovery mode.",parent=self.root)
+
     def _refresh_entrances(self):
         """Handle refresh entrances."""
         if not hasattr(self,"entrance_tree"): return
