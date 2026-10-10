@@ -418,6 +418,30 @@ class MapControllerMixin:
         if status in {"blocked", "unreachable", "out_of_logic"}:
             return "out_of_logic"
         return "unknown"
+    def _map_exit_marker_status(self, marker):
+        """Resolve an exit endpoint from the player-visible entrance topology."""
+        label=str(getattr(marker, "location_name", "") or "").strip()
+        if not label:
+            return "unknown"
+        def norm(value):
+            import re
+            return re.sub(r"[^a-z0-9]+", " ", str(value or "").strip().casefold()).strip()
+        wanted=norm(label)
+        matches=[]
+        for detail in getattr(self.snapshot, "entrance_details", []) or []:
+            if not isinstance(detail, dict) or bool(detail.get("unknown_destination")):
+                continue
+            target=norm(detail.get("target_region"))
+            if target and target == wanted:
+                matches.append(detail)
+        if not matches:
+            return "unknown"
+        if any(bool(row.get("reachable")) or str(row.get("status","")).casefold()=="reachable" for row in matches):
+            return "reachable"
+        if bool(getattr(self.snapshot, "reachability_available", False)):
+            return "out_of_logic"
+        return "unknown"
+
     def _map_entrance_section_status(self, marker, index, state=None):
         """Return live semantic state for an entrance marker section.
 

@@ -197,7 +197,7 @@ class SnapshotControllerMixin:
         batches = (
             (self._update_live_panel, self._refresh_dashboard_overview, self._refresh_map_from_snapshot, self._refresh_checks),
             (self._refresh_path_selector, self._refresh_inventory, self._refresh_hints, self._refresh_combined_inventory),
-            (self._refresh_events, self._refresh_entrances, self._refresh_ignored, self._refresh_recent),
+            (self._refresh_events, self._refresh_entrances, self._refresh_exits, self._refresh_ignored, self._refresh_recent),
             (self._refresh_compatibility, self._refresh_logic_engine, self._refresh_map_group_popup),
             (self._refresh_stuck, self._refresh_progression_graph, self._refresh_route_goal),
         )
@@ -269,7 +269,7 @@ class SnapshotControllerMixin:
                 self._runtime_identity=(str(snap.server or "").strip().casefold(), int(getattr(snap,"team",0) or 0), str(snap.slot_name or "").strip().casefold(), str(snap.game or "").strip().casefold())
                 self._append_log("Restored last-good tracker snapshot from persistence; marked STALE until the native runtime confirms it.")
                 try:
-                    self._refresh_checks(); self._refresh_inventory(); self._refresh_hints(); self._refresh_combined_inventory(); self._refresh_events(); self._refresh_entrances(); self._refresh_ignored(); self._refresh_map_from_snapshot(); self._refresh_stuck(); self._refresh_progression_graph(); self._refresh_route_goal(); self._refresh_dashboard_overview()
+                    self._refresh_checks(); self._refresh_inventory(); self._refresh_hints(); self._refresh_combined_inventory(); self._refresh_events(); self._refresh_entrances(); self._refresh_exits(); self._refresh_ignored(); self._refresh_map_from_snapshot(); self._refresh_stuck(); self._refresh_progression_graph(); self._refresh_route_goal(); self._refresh_dashboard_overview()
                     self.stat_vars["reach"].set(str(len(snap.reachable))); self.stat_vars["missing"].set(str(snap.missing_count)); self.stat_vars["checked"].set(str(snap.checked_count)); self.stat_vars["prog"].set(str(sum(1 for x in snap.inventory if x.progression)))
                 except (AttributeError, KeyError, tk.TclError):
                     _ignored("intentional best-effort fallback")

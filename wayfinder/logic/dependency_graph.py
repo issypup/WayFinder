@@ -87,3 +87,22 @@ class DependencyGraph:
     def is_safe_for(self, nodes: Iterable[str]) -> bool:
         """Return is safe for."""
         return not bool(set(nodes) & self.unsafe_nodes)
+
+
+    def to_dict(self) -> dict:
+        """Serialize the dependency index without executable rule objects."""
+        return {
+            "node_to_dependencies": {node: sorted(values) for node, values in sorted(self.node_to_dependencies.items())},
+            "unsafe_nodes": sorted(self.unsafe_nodes),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "DependencyGraph":
+        """Restore a dependency index produced by :meth:`to_dict`."""
+        graph=cls()
+        if not isinstance(data,dict):
+            return graph
+        unsafe=set(data.get("unsafe_nodes") or ())
+        for node,dependencies in (data.get("node_to_dependencies") or {}).items():
+            graph.add(str(node), dependencies or (), unsafe=str(node) in unsafe)
+        return graph

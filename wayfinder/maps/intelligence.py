@@ -30,14 +30,24 @@ def map_intelligence(snapshot,pack,resolve):
     map_names={m.name for m in pack.maps}
     for marker in pack.markers:
         if marker.is_entrance_marker:
-            candidates={marker.location_name,*marker.member_names}
-            if not candidates & entrance_names:entrance_unknown.append(marker.location_name)
+            # A converted PopTracker entrance marker is already a structurally
+            # identified entrance endpoint. Its display label is not required to
+            # equal an APWorld Entrance.name (many packs intentionally use their
+            # own labels), so a name mismatch is not an unknown *reference*. Live
+            # undiscovered destinations are reported separately below.
             continue
+        section_ids=getattr(marker,"section_ids",()) or ()
         for index,name in enumerate(marker.member_names):
             resolved=resolve(marker,index)
             canonical=getattr(resolved,"name",resolved)
             if canonical in live and marker.map_name in map_names:
                 covered.add(canonical);by_location[canonical].add(next((m.title for m in pack.maps if m.name==marker.map_name),marker.map_name))
-            else:unknown.append(name)
+            else:
+                ids=section_ids[index] if index < len(section_ids) else ()
+                # A concrete AP location ID proves that the pack reference was
+                # resolved successfully. If that ID is absent from this seed it is
+                # option-filtered/not-in-seed, not an unknown pack reference.
+                if not ids:
+                    unknown.append(name)
     entrance_unknown.extend(str(row.get('name','Unnamed entrance')) for row in snapshot.entrance_details if isinstance(row,dict) and (row.get('unknown') or row.get('status')=='unknown' or row.get('available') is False))
     return dict(missing_markers=sorted(live-covered),unknown_live_locations=unknown_live,unknown_locations=sorted(set(unknown)),unknown_entrances=sorted(set(entrance_unknown)),maps={key:sorted(value) for key,value in by_location.items()},available=True)

@@ -146,8 +146,9 @@ class MapPopoutMixin:
                 names.append(marker.location_name); total+=1
                 if self.map_status_visible.get(status,self.map_status_visible["unknown"]).get(): shown+=1
             elif getattr(marker,"is_exit_marker",False):
-                statuses.append("unknown"); names.append(marker.location_name); total+=1
-                if self.map_status_visible["unknown"].get(): shown+=1
+                exit_status=self._map_exit_marker_status(marker)
+                statuses.append(exit_status); names.append(marker.location_name); total+=1
+                if self.map_status_visible.get(exit_status,self.map_status_visible["unknown"]).get(): shown+=1
             for member_index,name in enumerate(() if getattr(marker,"is_synthetic_marker",False) else marker.member_names):
                 loc=self._map_marker_member_location(marker,member_index,state)
                 if loc is None:continue

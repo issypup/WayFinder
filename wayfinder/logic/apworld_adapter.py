@@ -536,7 +536,23 @@ class NativeAPState:
     #  * @returns: See the return annotation and implementation; side effects are documented inline where they occur.
     #  */
     def __getattr__(self, name: str) -> Any:
-        """Handle getattr."""
+        """Delegate APWorld-installed CollectionState helpers before declaring them unsupported.
+
+        Several APWorlds add game-specific helper methods directly to Archipelago's
+        ``CollectionState`` class (for example ``_tww_obscure_1``).  Reimplementing
+        every helper in WayFinder is both brittle and game-specific.  When such a
+        helper exists, bind its function to this adapter so it executes against the
+        same native inventory/reachability facade.  Any CollectionState primitive
+        the helper uses still flows through this adapter and remains traceable.
+        """
+        try:
+            from BaseClasses import CollectionState
+            helper = getattr(CollectionState, name, None)
+        except Exception:
+            helper = None
+        if callable(helper):
+            self._record("state_helper", name, True, "Delegated APWorld CollectionState helper")
+            return helper.__get__(self, type(self))
         self._record("unsupported", name, False, f"CollectionState.{name}")
         raise UnsupportedStateOperation(f"CollectionState.{name} is not implemented by native AP adapter")
 

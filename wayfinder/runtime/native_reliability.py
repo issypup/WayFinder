@@ -2,6 +2,7 @@
 import asyncio
 import copy
 import json
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -124,9 +125,27 @@ class NativeReliability(APProtocol):
             self.transition('RECONSTRUCTING','Building connected APWorld')
             self.component_health('APWorld','busy',ctx.game)
             self.world_preparation('dependencies',5,10,'Verifying world dependencies', game=ctx.game, slot=ctx.auth or 'Player', progress_mode='indeterminate')
-            dependency_started=time.perf_counter()
-            report['dependencies']=require_dependencies(record,DEPENDENCIES_DIR)
-            dependency_ms=round((time.perf_counter()-dependency_started)*1000.0,3)
+            # Dependency validation and native preparation are independent once
+            # the selected APWorld is known, so run them concurrently.
+            from concurrent.futures import ThreadPoolExecutor
+            from .native_dependencies import prepare_native_dependencies
+            def _timed_call(callable_, *args, **kwargs):
+                started=time.perf_counter()
+                value=callable_(*args,**kwargs)
+                return value, round((time.perf_counter()-started)*1000.0,3)
+            preparation_started=time.perf_counter()
+            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="WayFinder-Prep") as pool:
+                dependency_future=pool.submit(_timed_call,require_dependencies,record,DEPENDENCIES_DIR)
+                native_future=pool.submit(
+                    _timed_call,
+                    prepare_native_dependencies,
+                    dependency_root=DEPENDENCIES_DIR,
+                    apworld_path=record.path,
+                    extra_roots=(Path(sys._MEIPASS),) if getattr(sys,"frozen",False) and hasattr(sys,"_MEIPASS") else (),
+                )
+                (report['dependencies'],dependency_ms)=dependency_future.result()
+                (native_result,native_ms)=native_future.result()
+            parallel_preparation_ms=round((time.perf_counter()-preparation_started)*1000.0,3)
             dep_total=len(report['dependencies'])
             # ``dep_total`` is the number of requirements declared by this APWorld,
             # not the number of packages available in WayFinder's managed environment.
@@ -153,19 +172,68 @@ class NativeReliability(APProtocol):
             key=reconstruction_key(record,self.ap_root,DEPENDENCIES_DIR,
                 dict(connection=connection,identity=seed_identity(ctx,None),slot_data=slot_data,
                      players=tree_fingerprint(self.players_path) if self.players_path else ''), environment=environment)
-            self.world_preparation('reconstructing',6,10,'Reconstructing seed logic', game=ctx.game, slot=ctx.auth or 'Player', progress_mode='indeterminate')
+            from .seed_model_cache import load as load_seed_model
+            persistent_seed_model=load_seed_model(key)
+            persistent_seed_model_hit=bool(persistent_seed_model)
+            if persistent_seed_model_hit:
+                self.send_log(
+                    f"[PERF] Persistent seed model restored: "
+                    f"{len(persistent_seed_model.get('regions',[]))} regions / "
+                    f"{len(persistent_seed_model.get('locations',[]))} locations"
+                )
+                # Secondary consumers may use this static model immediately while
+                # executable APWorld rules are reconstructed in the worker.
+                self.send_status("seed_model_cached", {
+                    "cache_key":key,
+                    "game":persistent_seed_model.get("game",ctx.game),
+                    "regions":len(persistent_seed_model.get("regions",[])),
+                    "locations":len(persistent_seed_model.get("locations",[])),
+                    "entrances":len(persistent_seed_model.get("entrances",[])),
+                    "logic_source":persistent_seed_model.get("logic_source",""),
+                })
+            self.world_preparation('reconstructing',6,10,('Restoring cached seed model and executable logic' if persistent_seed_model_hit else 'Reconstructing seed logic'), game=ctx.game, slot=ctx.auth or 'Player', progress_mode='indeterminate')
             reconstruction_started=time.perf_counter()
             built,hit=self.reconstruction_cache.get_or_build(key,lambda:build_world(world_class.game,ctx.auth or 'Player',slot_data,player_files_path=self.players_path or None))
             reconstruction_seconds=round(time.perf_counter()-reconstruction_started,3)
             self.world_preparation('reconstructing',6,10,('Loaded seed reconstruction from cache' if hit else 'Built seed reconstruction from APWorld'), game=ctx.game, slot=ctx.auth or 'Player', progress_mode='determinate', progress_current=1, progress_total=1, cache_hit=bool(hit), duration=reconstruction_seconds, logic_source=getattr(built,'logic_source','Unknown'), exact_logic=bool(getattr(built,'exact_logic',False)))
-            report.update(cache_key=key,cache_hit=hit)
+            report.update(cache_key=key,cache_hit=hit,persistent_seed_model_hit=persistent_seed_model_hit)
+            built._wayfinder_cache_key=key
+            from .entrance_knowledge import load as load_entrance_knowledge
+            built._wayfinder_entrance_knowledge=load_entrance_knowledge(key)
+            if persistent_seed_model_hit:
+                built._wayfinder_persistent_seed_model=persistent_seed_model
+                built._wayfinder_dependency_blueprint=dict(persistent_seed_model.get("dependency_graph") or {})
             token.checkpoint()
             if connection!=self.connection_id:return
             built._wayfinder_report_id=report['id']
             perf=dict(getattr(built,'performance_timings_ms',{}) or {})
-            perf.update(apworld_catalog_scan=discovery_ms, dependency_validation=dependency_ms, apworld_import=apworld_import_ms)
+            perf.update(
+                connection_authentication=float(getattr(self,"_authentication_ms",0.0) or 0.0),
+                apworld_catalog_scan=discovery_ms,
+                apworld_catalog_cached=bool(getattr(record,"_wayfinder_catalog_cache_hit",False)),
+                dependency_validation=dependency_ms,
+                dependency_validation_cached=bool(getattr(record,"_wayfinder_dependency_cache_hit",False)),
+                native_preparation=native_ms,
+                native_cache_reused=bool((native_result or {}).get("apworld_cache_reused",False)),
+                parallel_preparation=parallel_preparation_ms,
+                apworld_import=apworld_import_ms,
+                seed_reconstruction=round(reconstruction_seconds*1000.0,3),
+                reconstruction_cache_hit=bool(hit),
+                persistent_seed_model_hit=bool(persistent_seed_model_hit),
+            )
             built.performance_timings_ms=perf
             report['performance_timings_ms']=dict(perf)
+            self.send_log(
+                "[PERF] APWorld lookup %.1f ms%s | dependencies %.1f ms%s | native %.1f ms%s | "
+                "APWorld import %.1f ms | reconstruction %.1f ms%s"
+                % (
+                    discovery_ms, " [cached]" if perf.get("apworld_catalog_cached") else "",
+                    dependency_ms, " [cached]" if perf.get("dependency_validation_cached") else "",
+                    native_ms, " [reused]" if perf.get("native_cache_reused") else "",
+                    apworld_import_ms, reconstruction_seconds*1000.0,
+                    " [cached]" if hit else "",
+                )
+            )
             self.built=built
             stage('Reconstructed')
             self.send_status('game_apworld_loaded',True); self.send_status('world_reconstructed',True)
@@ -258,6 +326,23 @@ class NativeReliability(APProtocol):
             else:
                 data=dict(connected=bool(ctx and getattr(ctx,'slot',None)),server=str(getattr(ctx,'server_address','') or ''),slot_name=str(getattr(ctx,'auth','') or ''),game=str(getattr(ctx,'game','') or ''),team=int(getattr(ctx,'team',0) or 0),locations=[],inventory=[],reachability_available=False,error='World not reconstructed' if ctx and getattr(ctx,'slot',None) else '')
             snapshot_seconds=round(time.perf_counter()-snapshot_started,3)
+            if built:
+                perf=dict(getattr(built,"performance_timings_ms",{}) or {})
+                perf["snapshot_total"]=round(snapshot_seconds*1000.0,3)
+                snapshot_timings=dict(data.get("calculation_timings_ms",{}) or {})
+                if "multiworld_construction" in perf:
+                    perf["graph_construction"]=float(perf.get("multiworld_construction",0.0) or 0.0)
+                if preparing_world:
+                    perf["initial_reachability"]=float(snapshot_timings.get("logic_evaluation",snapshot_seconds*1000.0) or 0.0)
+                    logic_ready_ms=round((time.perf_counter()-getattr(self,"_connection_started_at",snapshot_started))*1000.0,3)
+                    perf["logic_ready"]=logic_ready_ms
+                    self.send_log(
+                        "[PERF] Initial reachability %.1f ms | Logic ready %.1f ms"
+                        % (perf["initial_reachability"], logic_ready_ms)
+                    )
+                built.performance_timings_ms=perf
+                if self.apworld_report and getattr(built,"_wayfinder_report_id",None)==self.apworld_report.get("id"):
+                    self.apworld_report["performance_timings_ms"]=dict(perf)
             if preparing_world and built:
                 total_locations=len(data.get('locations',[]) or [])
                 self.world_preparation('logic',7,10,f'Evaluated {total_locations} locations', game=str(getattr(ctx,'game','') or ''), slot=str(getattr(ctx,'auth','') or ''), progress_mode='determinate', progress_current=total_locations, progress_total=total_locations, duration=snapshot_seconds, logic_source=getattr(built,'logic_source','Unknown'), exact_logic=bool(getattr(built,'exact_logic',False)) )
@@ -271,6 +356,25 @@ class NativeReliability(APProtocol):
             self._inspector_snapshot_revision=inspector_revision
             self.send_status('seed_identity',dict(identity=identity,connection_id=connection))
             self.send(encode_snapshot(data))
+            # Persist the serialization-safe static seed model after publishing
+            # the authoritative live snapshot. Disk I/O never blocks readiness.
+            if built and preparing_world and getattr(built,"_wayfinder_cache_key",""):
+                import threading
+                from .seed_model_cache import from_built as seed_model_from_built, save as save_seed_model
+                normal_evaluator=getattr(built,"_wayfinder_logic_evaluator",None)
+                dependency_graph=(
+                    normal_evaluator._graph.to_dict()
+                    if normal_evaluator is not None and getattr(normal_evaluator,"_graph",None) is not None
+                    else {}
+                )
+                model=seed_model_from_built(built,data,dependency_graph)
+                cache_key=str(built._wayfinder_cache_key)
+                def _persist_seed_model():
+                    try:
+                        save_seed_model(cache_key,model)
+                    except Exception as exc:
+                        self.send_log(f"[CACHE] Seed model persistence skipped: {exc}")
+                threading.Thread(target=_persist_seed_model,name="WayFinder-SeedModelCache",daemon=True).start()
             if built and data.get('connected') and data.get('reachability_available') and self.apworld_report and self.apworld_report.get('connection')==connection and getattr(built,'_wayfinder_report_id',None)==self.apworld_report['id'] and self.apworld_report['stages'][-1]=='Reconstructed':
                 from .apworld_compatibility import save_report
                 self.apworld_report['stages'].append('Active')

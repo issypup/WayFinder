@@ -142,7 +142,11 @@ class TrackerPanelsMixin:
         # Loop variable(s): `c` (c), `w` (width/widget value (context dependent)); each iteration represents the next value from the iterable below.
         for c,w in (("Entrance",330),("Source",220),("Destination",220),("Status",110),("Requirements",380)): self.entrance_tree.heading(c,text=c); self.entrance_tree.column(c,width=w,anchor="w")
         self.entrance_tree.pack(fill="both",expand=True); self.entrance_tree.bind("<Double-1>",self._entrance_open_path); self.entrance_tree.bind("<Button-3>",self._entrance_context_menu)
+        controls=ttk.Frame(p); controls.pack(fill="x",pady=(6,0))
+        ttk.Button(controls,text="Set Discovered Destination",command=self._set_discovered_entrance).pack(side="left")
+        ttk.Button(controls,text="Forget Mapping",command=self._forget_discovered_entrance).pack(side="left",padx=(6,0))
         self.entrance_summary=tk.StringVar(value="Waiting for generated entrance graph."); ttk.Label(p,textvariable=self.entrance_summary,style="Muted.TLabel").pack(anchor="w",pady=(6,0))
+        ttk.Label(p,text="Randomized entrances use player knowledge: unknown destinations stay hidden from progression logic until AP legitimately exposes them or you fill them in here.",style="Muted.TLabel",wraplength=1100).pack(anchor="w",pady=(3,0))
     def _refresh_entrances(self):
         """Handle refresh entrances."""
         if not hasattr(self,"entrance_tree"): return
@@ -153,14 +157,108 @@ class TrackerPanelsMixin:
         # Loop variable(s): `d` (d); each iteration represents the next value from the iterable below.
         for d in rows:
             # Variable(s): `status` (status); named state retained for the surrounding calculation or subsequent calls.
-            status="Reachable" if d.get("reachable") else "Inaccessible"; reachable+=int(bool(d.get("reachable")))
+            unknown_destination=bool(d.get("unknown_destination"))
+            status=("Unknown destination" if unknown_destination else "Reachable" if d.get("reachable") else "Inaccessible"); reachable+=int(bool(d.get("reachable")) and not unknown_destination)
             # Variable(s): `missing` (missing); named state retained for the surrounding calculation or subsequent calls.
             missing=d.get("missing",[]) or []; req="; ".join(f"{x.get('name')}: {x.get('detail','missing')}" for x in missing[:3]) or ("Satisfied" if d.get("satisfied") else "Rule blocked")
             # Variable(s): `text` (text); named state retained for the surrounding calculation or subsequent calls.
-            text=f"{d.get('name','')} {d.get('source_region','')} {d.get('target_region','')} {req}".casefold()
+            destination=(d.get("target_region","") or "???")
+            text=f"{d.get('name','')} {d.get('source_region','')} {destination} {req}".casefold()
             if q and q not in text: continue
-            self.entrance_tree.insert("","end",values=(d.get("name",""),d.get("source_region",""),d.get("target_region",""),status,req))
-        self.entrance_summary.set(f"{reachable}/{len(rows)} entrances currently reachable • {len(rows)-reachable} inaccessible/unresolved")
+            self.entrance_tree.insert("","end",values=(d.get("name",""),d.get("source_region",""),destination,status,req))
+        known=sum(1 for d in rows if d.get("target_region"))
+        if getattr(self.snapshot,"entrance_randomization_enabled",None) is True:
+            self.entrance_summary.set(f"{known}/{len(rows)} randomized destinations known • {reachable} currently traversable from player-known topology")
+        else:
+            self.entrance_summary.set(f"{reachable}/{len(rows)} entrances currently reachable • {len(rows)-reachable} inaccessible/unresolved")
+    def _build_exits(self):
+        """Build the outbound traversal view used by coupled and decoupled entrance randomizers."""
+        p=self._page("Exits"); h=ttk.Frame(p); h.pack(fill="x",pady=(4,8)); ttk.Label(h,text="Exits & Outbound Traversal",style="Title.TLabel").pack(side="left")
+        self.exit_search=tk.StringVar(); e=ttk.Entry(h,textvariable=self.exit_search,width=32); e.pack(side="right"); e.bind("<KeyRelease>",lambda _e:self._refresh_exits())
+        self.exit_tree=ttk.Treeview(p,columns=("Exit","From","Destination","Status","Requirements"),show="headings")
+        for c,w in (("Exit",330),("From",220),("Destination",220),("Status",120),("Requirements",380)): self.exit_tree.heading(c,text=c); self.exit_tree.column(c,width=w,anchor="w")
+        self.exit_tree.pack(fill="both",expand=True)
+        controls=ttk.Frame(p); controls.pack(fill="x",pady=(6,0))
+        ttk.Button(controls,text="Set Discovered Destination",command=self._set_discovered_exit).pack(side="left")
+        ttk.Button(controls,text="Forget Mapping",command=self._forget_discovered_exit).pack(side="left",padx=(6,0))
+        self.exit_summary=tk.StringVar(value="Waiting for generated exit graph."); ttk.Label(p,textvariable=self.exit_summary,style="Muted.TLabel").pack(anchor="w",pady=(6,0))
+        ttk.Label(p,text="When the APWorld uses decoupled entrance randomization, exits are tracked independently: learning an entrance does not reveal its reverse exit. Coupled worlds still show outbound traversal here for clarity.",style="Muted.TLabel",wraplength=1100).pack(anchor="w",pady=(3,0))
+
+    def _refresh_exits(self):
+        if not hasattr(self,"exit_tree"): return
+        self._clear_tree(self.exit_tree); q=self.exit_search.get().strip().casefold() if hasattr(self,"exit_search") else ""
+        rows=getattr(self.snapshot,"exit_details",[]) or getattr(self.snapshot,"entrance_details",[]) or []; reachable=0
+        for d in rows:
+            unknown=bool(d.get("unknown_destination")); status=("Unknown destination" if unknown else "Reachable" if d.get("reachable") else "Inaccessible")
+            reachable+=int(bool(d.get("reachable")) and not unknown)
+            missing=d.get("missing",[]) or []; req="; ".join(f"{x.get('name')}: {x.get('detail','missing')}" for x in missing[:3]) or ("Satisfied" if d.get("satisfied") else "Rule blocked")
+            destination=d.get("target_region","") or "???"; text=f"{d.get('name','')} {d.get('source_region','')} {destination} {req}".casefold()
+            if q and q not in text: continue
+            self.exit_tree.insert("","end",values=(d.get("name",""),d.get("source_region",""),destination,status,req))
+        known=sum(1 for d in rows if d.get("target_region"))
+        if getattr(self.snapshot,"entrance_decoupled",None) is True:
+            self.exit_summary.set(f"Decoupled mode • {known}/{len(rows)} exit destinations known independently • {reachable} currently traversable")
+        elif getattr(self.snapshot,"entrance_decoupled",None) is False:
+            self.exit_summary.set(f"Coupled mode • {reachable}/{len(rows)} outbound traversals currently reachable")
+        else:
+            self.exit_summary.set(f"Coupling mode not exposed by APWorld • {reachable}/{len(rows)} outbound traversals currently reachable")
+
+    def _selected_exit_name(self):
+        if not self.exit_tree.selection(): return ""
+        vals=self.exit_tree.item(self.exit_tree.selection()[0],"values"); return str(vals[0]) if vals else ""
+
+    def _set_discovered_exit(self):
+        edge=self._selected_exit_name()
+        if not edge: messagebox.showinfo("Exit discovery","Select an exit first.",parent=self.root); return
+        regions=sorted({str(loc.region) for loc in getattr(self.snapshot,"locations",[]) if str(getattr(loc,"region","") or "")},key=str.casefold)
+        for row in getattr(self.snapshot,"exit_details",[]) or getattr(self.snapshot,"entrance_details",[]) or []:
+            for key in ("source_region","target_region"):
+                value=str(row.get(key,"") or "")
+                if value: regions.append(value)
+        regions=sorted(set(regions),key=str.casefold)
+        dialog=tk.Toplevel(self.root); dialog.title("Set Discovered Exit Destination"); dialog.transient(self.root); dialog.grab_set(); dialog.resizable(False,False)
+        ttk.Label(dialog,text=edge,style="CardTitle.TLabel").pack(anchor="w",padx=14,pady=(14,6)); value=tk.StringVar(); combo=ttk.Combobox(dialog,textvariable=value,values=regions,width=54); combo.pack(padx=14,pady=6); combo.focus_set()
+        def save():
+            destination=value.get().strip()
+            if destination and self.runtime_client.discover_entrance(edge,destination): dialog.destroy()
+        ttk.Button(dialog,text="Save discovered exit",style="Accent.TButton",command=save).pack(pady=(6,14))
+
+    def _forget_discovered_exit(self):
+        edge=self._selected_exit_name()
+        if edge and messagebox.askyesno("Forget exit mapping",f"Forget the discovered destination for {edge}?",parent=self.root): self.runtime_client.forget_entrance(edge)
+
+    def _selected_entrance_name(self):
+        if not self.entrance_tree.selection(): return ""
+        vals=self.entrance_tree.item(self.entrance_tree.selection()[0],"values")
+        return str(vals[0]) if vals else ""
+    def _set_discovered_entrance(self):
+        """Let the player fill in one entrance without exposing spoiler topology."""
+        entrance=self._selected_entrance_name()
+        if not entrance:
+            messagebox.showinfo("Entrance discovery","Select an entrance first.",parent=self.root); return
+        regions=sorted({str(loc.region) for loc in getattr(self.snapshot,"locations",[]) if str(getattr(loc,"region","") or "")},key=str.casefold)
+        # Include region names present only in entrance sources/known destinations.
+        for row in getattr(self.snapshot,"entrance_details",[]) or []:
+            for key in ("source_region","target_region"):
+                value=str(row.get(key,"") or "")
+                if value and value not in regions: regions.append(value)
+        regions=sorted(set(regions),key=str.casefold)
+        dialog=tk.Toplevel(self.root); dialog.title("Set Discovered Entrance Destination"); dialog.transient(self.root); dialog.grab_set(); dialog.resizable(False,False)
+        ttk.Label(dialog,text=entrance,style="Title.TLabel").pack(anchor="w",padx=14,pady=(14,6))
+        ttk.Label(dialog,text="Destination region discovered by the player:").pack(anchor="w",padx=14)
+        value=tk.StringVar(); combo=ttk.Combobox(dialog,textvariable=value,values=regions,width=52); combo.pack(fill="x",padx=14,pady=8); combo.focus_set()
+        buttons=ttk.Frame(dialog); buttons.pack(fill="x",padx=14,pady=(0,14))
+        def save():
+            destination=value.get().strip()
+            if not destination: return
+            if destination not in regions:
+                messagebox.showerror("Entrance discovery","Choose a region from this seed.",parent=dialog); return
+            if self.runtime_client.discover_entrance(entrance,destination): dialog.destroy()
+        ttk.Button(buttons,text="Save",command=save).pack(side="right"); ttk.Button(buttons,text="Cancel",command=dialog.destroy).pack(side="right",padx=(0,6)); dialog.bind("<Return>",lambda _e:save())
+    def _forget_discovered_entrance(self):
+        entrance=self._selected_entrance_name()
+        if entrance and messagebox.askyesno("Forget entrance mapping",f"Forget the discovered destination for {entrance}?",parent=self.root):
+            self.runtime_client.forget_entrance(entrance)
     def _entrance_open_path(self,_e=None):
         """Handle entrance open path."""
         if not self.entrance_tree.selection(): return

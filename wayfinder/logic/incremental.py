@@ -53,7 +53,7 @@ class IncrementalAPWorldEvaluator:
     #  * @param player: Player supplied by the caller; see type hints and call sites for domain constraints.
     #  * @returns: See the return annotation and implementation; side effects are documented inline where they occur.
     #  */
-    def __init__(self, *, multiworld: Any, world: Any, player: int):
+    def __init__(self, *, multiworld: Any, world: Any, player: int, dependency_blueprint: dict | None = None):
         """Handle init."""
         self.multiworld = multiworld
         self.world = world
@@ -61,7 +61,8 @@ class IncrementalAPWorldEvaluator:
         self._last_inventory: Counter[str] | None = None
         self._last_checked: set[str] | None = None
         self._last: APAdapterSnapshot | None = None
-        self._graph = DependencyGraph()
+        self._graph = DependencyGraph.from_dict(dependency_blueprint or {})
+        self._persistent_graph_seeded = bool(self._graph.node_to_dependencies)
 
     # /**
     #  * Function: _dependency_keys
@@ -155,7 +156,20 @@ class IncrementalAPWorldEvaluator:
         self._last_inventory = Counter(inventory)
         self._last_checked = set(checked)
         self._last = snapshot
-        self._build_graph(snapshot)
+        # A persistent graph is safe to reuse only when it describes exactly the
+        # same static seed node set. Otherwise rebuild from the fresh traces.
+        expected_nodes={f"location:{name}" for name in (snapshot.rule_details or {})}
+        expected_nodes.update(
+            f"entrance:{str(detail.get('name',''))}"
+            for detail in (snapshot.entrance_details or [])
+        )
+        expected_nodes.update(
+            f"event:{str(detail.get('event_item') or detail.get('name') or '')}"
+            for detail in (snapshot.event_details or [])
+        )
+        if not self._persistent_graph_seeded or set(self._graph.node_to_dependencies) != expected_nodes:
+            self._build_graph(snapshot)
+            self._persistent_graph_seeded=False
         # Variable(s): `node_count` (node count); named state retained for the surrounding calculation or subsequent calls.
         node_count = len(snapshot.rule_details) + len(snapshot.entrance_details) + len(snapshot.event_details)
         return IncrementalResult(snapshot, RecalculationStats(

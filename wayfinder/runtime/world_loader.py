@@ -319,11 +319,29 @@ def ensure_game_loaded(game: str, ap_root: str | os.PathLike[str], *, selected_p
         return _apply_world_manifest_contract(loaded, record)
     path = Path(record.path)
     kind = 'dir' if path.is_dir() else 'apworld'
+
+    # Prepare all external native-library locations before importing the world.
+    # This is intentionally game-agnostic: managed wheels and APWorld-owned
+    # .pyd/.dll payloads are discovered from the selected runtime inputs.
+    from .native_dependencies import prepare_native_dependencies, describe_native_import_failure
+    try:
+        from ..setup import DEPENDENCIES_DIR
+    except (ImportError, ValueError):
+        DEPENDENCIES_DIR = None
+    prepare_native_dependencies(
+        dependency_root=DEPENDENCIES_DIR,
+        apworld_path=path,
+        extra_roots=(Path(sys._MEIPASS),) if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS") else (),
+    )
     module_name = record.module
     fullname = f"worlds.{module_name}"
 
     if kind == "dir":
-        importlib.import_module(fullname)
+        try:
+            importlib.import_module(fullname)
+        except (ImportError, OSError) as exc:
+            log.error("Native/world import failed: %s", describe_native_import_failure(exc, module_name=fullname, apworld_path=path))
+            raise
     else:
         # Variable(s): `importer` (importer); named state retained for the surrounding calculation or subsequent calls.
         importer = zipimport.zipimporter(str(path))
@@ -342,7 +360,11 @@ def ensure_game_loaded(game: str, ap_root: str | os.PathLike[str], *, selected_p
             raise RuntimeError(f"Could not create an import spec for APWorld {path.name}")
         _APWORLD_SPECS[fullname] = spec
         try:
-            importlib.import_module(fullname)
+            try:
+                importlib.import_module(fullname)
+            except (ImportError, OSError) as exc:
+                log.error("Native/world import failed: %s", describe_native_import_failure(exc, module_name=fullname, apworld_path=path))
+                raise
         finally:
             _APWORLD_SPECS.pop(fullname, None)
 

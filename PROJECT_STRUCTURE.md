@@ -112,9 +112,12 @@ wayfinder/
 │   ├── dependency_manager.py
 │   ├── dependency_path.py
 │   ├── dependency_progress.py
+│   ├── entrance_knowledge.py
+│   ├── native_dependencies.py
 │   ├── native_reliability.py
 │   ├── process_manager.py
 │   ├── reliability.py
+│   ├── seed_model_cache.py
 │   ├── server.py
 │   ├── snapshot.py
 │   ├── source_recipes.py
@@ -152,6 +155,7 @@ pytest/
 │   ├── test_appearance_settings_atomic_write_01473.py
 │   ├── test_apworld_catalog_01453.py
 │   ├── test_apworld_current_map_fallback.py
+│   ├── test_backend_performance_foundation.py
 │   ├── test_build_stable_abi.py
 │   ├── test_bundled_native_wheels.py
 │   ├── test_compact_run_overview.py
@@ -168,12 +172,14 @@ pytest/
 │   ├── test_dependency_diagnostics.py
 │   ├── test_dependency_progress.py
 │   ├── test_diagnostics_logging.py
+│   ├── test_entrance_player_knowledge.py
 │   ├── test_entrypoint_dispatch.py
 │   ├── test_error_handler_utility_100.py
 │   ├── test_exit_vanilla_assignment_01438.py
 │   ├── test_first_launch_setup.py
 │   ├── test_font_size_setting.py
 │   ├── test_frlg_strength_and_checked_state_01443.py
+│   ├── test_generic_native_dependency_preparation.py
 │   ├── test_generic_nonprogression_map_status_01439.py
 │   ├── test_generic_poptracker_live_map_conversion.py
 │   ├── test_generic_seed_entrance_topology.py
@@ -209,6 +215,7 @@ pytest/
 │   ├── test_no_launcher_module.py
 │   ├── test_pack_converter_tab.py
 │   ├── test_performance_optimisation_01466.py
+│   ├── test_persistent_seed_model_and_incremental.py
 │   ├── test_player_position.py
 │   ├── test_player_yaml_option_preservation_01446.py
 │   ├── test_poptracker_entrance_boolean_status_01433.py
@@ -265,8 +272,8 @@ PROJECT_STRUCTURE.md
 - **Import-time internal imports:** _None._
 - **Lazy/local internal imports:** _None._
 - **External / standard-library imports:** `json`, `os`, `pathlib`, `tempfile`
-- **Import-time importers:** `wayfinder.app.app`, `wayfinder.app.controllers.connection_controller`, `wayfinder.app.controllers.map_controller`, `wayfinder.app.controllers.setup_controller`, `wayfinder.app.controllers.snapshot_controller`, `wayfinder.app.map.map_pack_manager`, `wayfinder.app.map.map_shared`, `wayfinder.app.pages.checks_page`, `wayfinder.app.pages.dashboard`, `wayfinder.app.pages.diagnostics_page`, `wayfinder.app.pages.hints_page`, `wayfinder.app.pages.path_page`, `wayfinder.app.pages.setup_page`, `wayfinder.app.ui.appearance`, `wayfinder.app.ui.log_page`, `wayfinder.app.ui.logic_tools`, `wayfinder.app.ui.search_ui`, `wayfinder.app.ui.shell`, `wayfinder.app.ui.tracker_panels`, `wayfinder.connection.memory`, `wayfinder.maps.packs`, `wayfinder.runtime.server`, `wayfinder.setup.archipelago_core`
-- **Lazy/local importers:** `wayfinder.app.ui.reliability_ui`, `wayfinder.runtime.world_builder`
+- **Import-time importers:** `wayfinder.app.app`, `wayfinder.app.controllers.connection_controller`, `wayfinder.app.controllers.map_controller`, `wayfinder.app.controllers.setup_controller`, `wayfinder.app.controllers.snapshot_controller`, `wayfinder.app.map.map_pack_manager`, `wayfinder.app.map.map_shared`, `wayfinder.app.pages.checks_page`, `wayfinder.app.pages.dashboard`, `wayfinder.app.pages.diagnostics_page`, `wayfinder.app.pages.hints_page`, `wayfinder.app.pages.path_page`, `wayfinder.app.pages.setup_page`, `wayfinder.app.ui.appearance`, `wayfinder.app.ui.log_page`, `wayfinder.app.ui.logic_tools`, `wayfinder.app.ui.search_ui`, `wayfinder.app.ui.shell`, `wayfinder.app.ui.tracker_panels`, `wayfinder.connection.memory`, `wayfinder.maps.packs`, `wayfinder.runtime.entrance_knowledge`, `wayfinder.runtime.native_dependencies`, `wayfinder.runtime.seed_model_cache`, `wayfinder.runtime.server`, `wayfinder.setup.archipelago_core`
+- **Lazy/local importers:** `wayfinder.app.ui.reliability_ui`, `wayfinder.runtime.apworld_catalog`, `wayfinder.runtime.apworld_compatibility`, `wayfinder.runtime.world_builder`
 - **Dependency direction:** One-way at import-time level.
 
 # `wayfinder/app/` — Application composition and GUI packages
@@ -1009,8 +1016,8 @@ PROJECT_STRUCTURE.md
 - **Module:** `wayfinder.runtime.apworld_catalog`
 - **Exports:** `STAGES`, `WorldRecord`, `atomic_copy`, `atomic_json`, `content_hash`, `core_version`, `discover`, `inspect_world`, `inventory`, `normal_game`, `select_world`, `version_tuple`
 - **Import-time internal imports:** _None._
-- **Lazy/local internal imports:** `wayfinder.runtime.dependency_manager`
-- **External / standard-library imports:** `ast`, `dataclasses`, `hashlib`, `json`, `os`, `pathlib`, `re`, `shutil`, `tempfile`, `zipfile`
+- **Lazy/local internal imports:** `wayfinder.runtime.dependency_manager`, `wayfinder.storage`
+- **External / standard-library imports:** `ast`, `dataclasses`, `hashlib`, `json`, `os`, `pathlib`, `re`, `shutil`, `tempfile`, `threading`, `zipfile`
 - **Import-time importers:** `wayfinder.app.ui.apworld_ui`, `wayfinder.runtime.apworld_compatibility`
 - **Lazy/local importers:** `wayfinder.app.controllers.setup_controller`, `wayfinder.runtime.native_reliability`, `wayfinder.runtime.world_loader`, `wayfinder.setup.archipelago_core`
 - **Dependency direction:** One-way at import-time level.
@@ -1020,7 +1027,7 @@ PROJECT_STRUCTURE.md
 - **Module:** `wayfinder.runtime.apworld_compatibility`
 - **Exports:** `COMPATIBILITY_TESTER_VERSION`, `CORE_GENERATED`, `ReconstructionCache`, `compatibility_child`, `dependency_preflight`, `environment_identity`, `persist_exception`, `reconstruction_key`, `report_directory`, `require_dependencies`, `run_compatibility_test`, `save_report`, `tree_fingerprint`
 - **Import-time internal imports:** `wayfinder`, `wayfinder.diagnostics`, `wayfinder.runtime.apworld_catalog`, `wayfinder.utils.ignored`
-- **Lazy/local internal imports:** `wayfinder.connection.identity`, `wayfinder.connection.protocol`, `wayfinder.runtime.bundled_wheels`, `wayfinder.runtime.process_manager`, `wayfinder.runtime.server`, `wayfinder.runtime.snapshot`, `wayfinder.runtime.source_recipes`, `wayfinder.runtime.world_builder`, `wayfinder.runtime.world_loader`, `wayfinder.setup`
+- **Lazy/local internal imports:** `wayfinder.connection.identity`, `wayfinder.connection.protocol`, `wayfinder.runtime.bundled_wheels`, `wayfinder.runtime.process_manager`, `wayfinder.runtime.server`, `wayfinder.runtime.snapshot`, `wayfinder.runtime.source_recipes`, `wayfinder.runtime.world_builder`, `wayfinder.runtime.world_loader`, `wayfinder.setup`, `wayfinder.storage`
 - **External / standard-library imports:** `collections`, `hashlib`, `importlib`, `json`, `os`, `packaging.requirements`, `packaging.utils`, `pathlib`, `subprocess`, `sys`, `threading`, `time`, `traceback`, `types`, `uuid`
 - **Import-time importers:** `wayfinder.app.ui.apworld_ui`
 - **Lazy/local importers:** `wayfinder.runtime.native_reliability`
@@ -1070,13 +1077,35 @@ PROJECT_STRUCTURE.md
 - **Lazy/local importers:** `wayfinder.app.controllers.setup_controller`
 - **Dependency direction:** One-way at import-time level.
 
+### `wayfinder/runtime/entrance_knowledge.py`
+# Seed-scoped player knowledge for randomized entrance destinations.
+- **Module:** `wayfinder.runtime.entrance_knowledge`
+- **Exports:** `SCHEMA`, `forget`, `known_destination`, `load`, `save`, `set_destination`
+- **Import-time internal imports:** `wayfinder.storage`
+- **Lazy/local internal imports:** _None._
+- **External / standard-library imports:** `json`, `os`, `pathlib`, `time`, `typing`
+- **Import-time importers:** _No import-time production-module importers detected._
+- **Lazy/local importers:** `wayfinder.runtime.native_reliability`, `wayfinder.runtime.server`
+- **Dependency direction:** One-way at import-time level.
+
+### `wayfinder/runtime/native_dependencies.py`
+# Prepare and reuse native dependencies for dynamically loaded APWorlds.
+- **Module:** `wayfinder.runtime.native_dependencies`
+- **Exports:** `describe_native_import_failure`, `prepare_native_dependencies`
+- **Import-time internal imports:** `wayfinder.storage`
+- **Lazy/local internal imports:** _None._
+- **External / standard-library imports:** `hashlib`, `json`, `logging`, `os`, `pathlib`, `shutil`, `sys`, `threading`, `zipfile`
+- **Import-time importers:** _No import-time production-module importers detected._
+- **Lazy/local importers:** `wayfinder.runtime.native_reliability`, `wayfinder.runtime.world_loader`
+- **Dependency direction:** One-way at import-time level.
+
 ### `wayfinder/runtime/native_reliability.py`
 # Native runtime reliability operations, independent of the AP asyncio loop.
 - **Module:** `wayfinder.runtime.native_reliability`
 - **Exports:** `NativeReliability`
 - **Import-time internal imports:** `wayfinder.connection.identity`, `wayfinder.connection.protocol`, `wayfinder.diagnostics`, `wayfinder.runtime.ap_protocol`, `wayfinder.runtime.reliability`
-- **Lazy/local internal imports:** `wayfinder.runtime.apworld_catalog`, `wayfinder.runtime.apworld_compatibility`, `wayfinder.runtime.snapshot`, `wayfinder.runtime.world_builder`, `wayfinder.runtime.world_loader`, `wayfinder.setup`
-- **External / standard-library imports:** `asyncio`, `copy`, `importlib`, `json`, `pathlib`, `time`, `traceback`, `uuid`
+- **Lazy/local internal imports:** `wayfinder.runtime.apworld_catalog`, `wayfinder.runtime.apworld_compatibility`, `wayfinder.runtime.entrance_knowledge`, `wayfinder.runtime.native_dependencies`, `wayfinder.runtime.seed_model_cache`, `wayfinder.runtime.snapshot`, `wayfinder.runtime.world_builder`, `wayfinder.runtime.world_loader`, `wayfinder.setup`
+- **External / standard-library imports:** `asyncio`, `concurrent`, `copy`, `importlib`, `json`, `pathlib`, `sys`, `threading`, `time`, `traceback`, `uuid`
 - **Import-time importers:** `wayfinder.runtime.server`
 - **Lazy/local importers:** _None._
 - **Dependency direction:** One-way at import-time level.
@@ -1103,12 +1132,23 @@ PROJECT_STRUCTURE.md
 - **Lazy/local importers:** _None._
 - **Dependency direction:** One-way at import-time level.
 
+### `wayfinder/runtime/seed_model_cache.py`
+# Persistent, serialization-safe seed model cache.
+- **Module:** `wayfinder.runtime.seed_model_cache`
+- **Exports:** `SCHEMA`, `cache_dir`, `cache_path`, `from_built`, `load`, `save`
+- **Import-time internal imports:** `wayfinder.storage`
+- **Lazy/local internal imports:** _None._
+- **External / standard-library imports:** `json`, `os`, `pathlib`, `time`, `typing`
+- **Import-time importers:** _No import-time production-module importers detected._
+- **Lazy/local importers:** `wayfinder.runtime.native_reliability`
+- **Dependency direction:** One-way at import-time level.
+
 ### `wayfinder/runtime/server.py`
 # Provide server support.
 - **Module:** `wayfinder.runtime.server`
 - **Exports:** `NativeRuntime`, `run_runtime`
 - **Import-time internal imports:** `wayfinder.connection.protocol`, `wayfinder.diagnostics`, `wayfinder.runtime`, `wayfinder.runtime.native_reliability`, `wayfinder.runtime.snapshot`, `wayfinder.runtime.world_builder`, `wayfinder.runtime.world_loader`, `wayfinder.storage`, `wayfinder.utils.ignored`
-- **Lazy/local internal imports:** `wayfinder.logic.rule_explanation`, `wayfinder.runtime.ap_protocol`, `wayfinder.runtime.dependency_path`
+- **Lazy/local internal imports:** `wayfinder.logic.rule_explanation`, `wayfinder.runtime.ap_protocol`, `wayfinder.runtime.dependency_path`, `wayfinder.runtime.entrance_knowledge`
 - **External / standard-library imports:** `CommonClient`, `NetUtils`, `Utils`, `asyncio`, `collections`, `json`, `logging`, `os`, `pathlib`, `socket`, `ssl`, `sys`, `threading`, `time`, `types`, `typing`, `uuid`
 - **Import-time importers:** _No import-time production-module importers detected._
 - **Lazy/local importers:** `wayfinder.runtime.apworld_compatibility`
@@ -1174,7 +1214,7 @@ PROJECT_STRUCTURE.md
 - **Module:** `wayfinder.runtime.world_loader`
 - **Exports:** `ensure_game_loaded`, `install_minimal_worlds_package`
 - **Import-time internal imports:** `wayfinder.utils.ignored`
-- **Lazy/local internal imports:** `wayfinder.runtime.apworld_catalog`
+- **Lazy/local internal imports:** `wayfinder.runtime.apworld_catalog`, `wayfinder.runtime.native_dependencies`, `wayfinder.setup`
 - **External / standard-library imports:** `Utils`, `ast`, `importlib`, `json`, `logging`, `os`, `pathlib`, `sys`, `types`, `typing`, `worlds.AutoWorld`, `zipfile`, `zipimport`
 - **Import-time importers:** `wayfinder.runtime.server`
 - **Lazy/local importers:** `wayfinder.runtime.apworld_compatibility`, `wayfinder.runtime.native_reliability`
@@ -1190,7 +1230,7 @@ PROJECT_STRUCTURE.md
 - **Lazy/local internal imports:** _None._
 - **External / standard-library imports:** _None._
 - **Import-time importers:** `wayfinder.app.app`, `wayfinder.app.controllers.connection_controller`, `wayfinder.app.controllers.map_controller`, `wayfinder.app.controllers.setup_controller`, `wayfinder.app.controllers.snapshot_controller`, `wayfinder.app.map.map_pack_manager`, `wayfinder.app.map.map_shared`, `wayfinder.app.pages.checks_page`, `wayfinder.app.pages.dashboard`, `wayfinder.app.pages.diagnostics_page`, `wayfinder.app.pages.hints_page`, `wayfinder.app.pages.path_page`, `wayfinder.app.pages.setup_page`, `wayfinder.app.ui.appearance`, `wayfinder.app.ui.apworld_ui`, `wayfinder.app.ui.log_page`, `wayfinder.app.ui.logic_tools`, `wayfinder.app.ui.search_ui`, `wayfinder.app.ui.shell`, `wayfinder.app.ui.tracker_panels`
-- **Lazy/local importers:** `wayfinder.runtime.apworld_compatibility`, `wayfinder.runtime.native_reliability`
+- **Lazy/local importers:** `wayfinder.runtime.apworld_compatibility`, `wayfinder.runtime.native_reliability`, `wayfinder.runtime.world_loader`
 - **Dependency direction:** One-way at import-time level.
 
 ### `wayfinder/setup/archipelago_core.py`

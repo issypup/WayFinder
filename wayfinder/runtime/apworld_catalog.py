@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import tempfile
+import threading
 import zipfile
 from dataclasses import dataclass, field, asdict
 from pathlib import Path, PurePosixPath
@@ -151,7 +152,7 @@ class WorldRecord:
         return asdict(self)
 
 
-def inspect_world(path, source='WayFinder', ap_version='', *, details=True):
+def _inspect_world_uncached(path, source='WayFinder', ap_version='', *, details=True):
     """Handle inspect world."""
     record = WorldRecord(str(Path(path).resolve()), source=source)
     archive = None
@@ -293,6 +294,100 @@ def inspect_world(path, source='WayFinder', ap_version='', *, details=True):
     finally:
         if archive:
             archive.close()
+    return record
+
+
+_CATALOG_CACHE_SCHEMA = 1
+_catalog_cache_lock = threading.Lock()
+_catalog_cache_memory = None
+
+
+def _catalog_cache_path():
+    """Return the persistent APWorld catalogue index."""
+    from ..storage import app_data_root
+    return app_data_root() / "cache" / "apworld-catalog-index.json"
+
+
+def _path_stat_signature(path):
+    """Fingerprint filesystem metadata without reading APWorld contents."""
+    path = Path(path)
+    if path.is_file():
+        stat = path.stat()
+        return ["file", stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns]
+    rows = []
+    if path.is_dir():
+        for item in sorted((p for p in path.rglob("*") if p.is_file()), key=lambda p: p.as_posix().casefold()):
+            if any(part in {"__pycache__", ".git"} for part in item.parts) or item.suffix == ".pyc":
+                continue
+            stat = item.stat()
+            rows.append([item.relative_to(path).as_posix(), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns])
+    return ["dir", rows]
+
+
+def _load_catalog_cache():
+    global _catalog_cache_memory
+    with _catalog_cache_lock:
+        if _catalog_cache_memory is not None:
+            return _catalog_cache_memory
+        try:
+            value = json.loads(_catalog_cache_path().read_text(encoding="utf-8"))
+            if value.get("schema") != _CATALOG_CACHE_SCHEMA:
+                value = {"schema": _CATALOG_CACHE_SCHEMA, "entries": {}}
+        except (OSError, ValueError, UnicodeError, AttributeError):
+            value = {"schema": _CATALOG_CACHE_SCHEMA, "entries": {}}
+        _catalog_cache_memory = value
+        return value
+
+
+def _save_catalog_cache(cache):
+    try:
+        atomic_json(_catalog_cache_path(), cache)
+    except OSError:
+        pass
+
+
+def inspect_world(path, source='WayFinder', ap_version='', *, details=True):
+    """Inspect an APWorld, reusing metadata/hash results while its files are unchanged."""
+    resolved = str(Path(path).resolve())
+    try:
+        signature = _path_stat_signature(resolved)
+    except OSError:
+        return _inspect_world_uncached(path, source, ap_version, details=details)
+
+    cache = _load_catalog_cache()
+    key = resolved.casefold()
+    entry = cache.get("entries", {}).get(key, {})
+    cached_record = entry.get("record") if isinstance(entry, dict) else None
+    # A detailed record can satisfy both detailed and discovery-only callers.
+    if (
+        cached_record
+        and entry.get("signature") == signature
+        and entry.get("ap_version", "") == str(ap_version or "")
+        and (not details or entry.get("details") is True)
+    ):
+        allowed = {field.name for field in __import__("dataclasses").fields(WorldRecord)}
+        values = {k: v for k, v in cached_record.items() if k in allowed}
+        values["source"] = source
+        record = WorldRecord(**values)
+        record._wayfinder_catalog_cache_hit = True
+        return record
+
+    record = _inspect_world_uncached(path, source, ap_version, details=details)
+    record._wayfinder_catalog_cache_hit = False
+    # Persist detailed records; discovery-only records are still useful until a
+    # detailed inspection upgrades the same entry.
+    with _catalog_cache_lock:
+        cache.setdefault("entries", {})[key] = {
+            "signature": signature,
+            "ap_version": str(ap_version or ""),
+            "details": bool(details),
+            "record": record.to_dict(),
+        }
+        # Bound stale paths opportunistically.
+        if len(cache["entries"]) > 2048:
+            existing = {k: v for k, v in cache["entries"].items() if Path(v.get("record", {}).get("path", "")).exists()}
+            cache["entries"] = dict(list(existing.items())[-2048:])
+        _save_catalog_cache(cache)
     return record
 
 

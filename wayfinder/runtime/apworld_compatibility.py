@@ -33,7 +33,7 @@ def report_directory():
     return APP_DATA_ROOT / 'apworld_reports'
 
 
-def dependency_preflight(record, dependency_root=None):
+def _dependency_preflight_uncached(record, dependency_root=None):
     """Evaluate declared requirements without importing packages or worlds."""
     from packaging.requirements import Requirement, InvalidRequirement
     from packaging.utils import canonicalize_name
@@ -88,6 +88,91 @@ def dependency_preflight(record, dependency_root=None):
         if entry.get('advisory'):
             item['state'] += ' (inferred import; may be optional)'
         results.append(item)
+    return results
+
+
+_DEPENDENCY_CACHE_SCHEMA = 1
+_dependency_cache_lock = threading.Lock()
+_dependency_cache_memory = None
+
+
+def _dependency_cache_path():
+    from ..storage import app_data_root
+    return app_data_root() / "cache" / "dependency-validation-index.json"
+
+
+def _dependency_root_signature(root):
+    """Cheap invalidation signature for the managed package environment."""
+    if not root:
+        return []
+    root = Path(root)
+    if not root.is_dir():
+        return []
+    rows = []
+    try:
+        for item in sorted(root.iterdir(), key=lambda p: p.name.casefold()):
+            stat = item.stat()
+            rows.append([item.name, item.is_dir(), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns])
+            # Provenance/version metadata can be rewritten in-place without
+            # changing the parent directory timestamp. Include the small files
+            # that dependency validation actually consults.
+            if item.is_dir() and item.name.casefold().endswith((".dist-info", ".egg-info")):
+                for metadata_name in ("METADATA", "direct_url.json"):
+                    metadata_path=item/metadata_name
+                    if metadata_path.is_file():
+                        metadata_stat=metadata_path.stat()
+                        rows.append([item.name+"/"+metadata_name, False, metadata_stat.st_size, metadata_stat.st_mtime_ns, metadata_stat.st_ctime_ns])
+    except OSError:
+        return []
+    return rows
+
+
+def _load_dependency_cache():
+    global _dependency_cache_memory
+    with _dependency_cache_lock:
+        if _dependency_cache_memory is not None:
+            return _dependency_cache_memory
+        try:
+            data = json.loads(_dependency_cache_path().read_text(encoding="utf-8"))
+            if data.get("schema") != _DEPENDENCY_CACHE_SCHEMA:
+                data = {"schema": _DEPENDENCY_CACHE_SCHEMA, "entries": {}}
+        except (OSError, ValueError, UnicodeError, AttributeError):
+            data = {"schema": _DEPENDENCY_CACHE_SCHEMA, "entries": {}}
+        _dependency_cache_memory = data
+        return data
+
+
+def dependency_preflight(record, dependency_root=None):
+    """Validate requirements with a persistent fast path for unchanged environments."""
+    signature = _dependency_root_signature(dependency_root)
+    requirements = list(getattr(record, "requirements", []) or [])
+    world_identity = getattr(record, "sha256", "") or getattr(record, "path", "")
+    if not world_identity:
+        record._wayfinder_dependency_cache_hit = False
+        return _dependency_preflight_uncached(record, dependency_root)
+    identity = hashlib.sha256(json.dumps({
+        "world": world_identity,
+        "requirements": requirements,
+        "python": [sys.version_info.major, sys.version_info.minor],
+        "environment": signature,
+    }, sort_keys=True, default=str).encode()).hexdigest()
+    cache = _load_dependency_cache()
+    cached = cache.get("entries", {}).get(identity)
+    if isinstance(cached, dict) and isinstance(cached.get("results"), list):
+        record._wayfinder_dependency_cache_hit = True
+        return [dict(row) for row in cached["results"]]
+
+    results = _dependency_preflight_uncached(record, dependency_root)
+    record._wayfinder_dependency_cache_hit = False
+    with _dependency_cache_lock:
+        cache.setdefault("entries", {})[identity] = {"results": results, "time": time.time()}
+        if len(cache["entries"]) > 512:
+            ordered = sorted(cache["entries"].items(), key=lambda pair: pair[1].get("time", 0), reverse=True)[:512]
+            cache["entries"] = dict(ordered)
+        try:
+            atomic_json(_dependency_cache_path(), cache)
+        except OSError:
+            pass
     return results
 
 

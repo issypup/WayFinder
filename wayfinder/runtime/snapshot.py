@@ -84,7 +84,10 @@ def _evaluate_logic_sets(*, multiworld: Any, world: Any, player: int, inventory:
     evaluator = getattr(built, "_wayfinder_logic_evaluator", None)
     if not isinstance(evaluator, IncrementalAPWorldEvaluator) or evaluator.multiworld is not multiworld or evaluator.world is not world or evaluator.player != int(player):
         # Variable(s): `evaluator` (evaluator); named state retained for the surrounding calculation or subsequent calls.
-        evaluator = IncrementalAPWorldEvaluator(multiworld=multiworld, world=world, player=player)
+        evaluator = IncrementalAPWorldEvaluator(
+            multiworld=multiworld, world=world, player=player,
+            dependency_blueprint=getattr(built, "_wayfinder_dependency_blueprint", None),
+        )
         setattr(built, "_wayfinder_logic_evaluator", evaluator)
     # Variable(s): `normal_result` (normal result); named state retained for the surrounding calculation or subsequent calls.
     normal_result = evaluator.evaluate(Counter(inventory), set(checked_names), force_full=force_full, trigger="manual_refresh" if force_full else "live_state")
@@ -102,7 +105,10 @@ def _evaluate_logic_sets(*, multiworld: Any, world: Any, player: int, inventory:
         glitch_evaluator = getattr(built, "_wayfinder_glitch_logic_evaluator", None)
         if not isinstance(glitch_evaluator, IncrementalAPWorldEvaluator) or glitch_evaluator.multiworld is not multiworld or glitch_evaluator.world is not world or glitch_evaluator.player != int(player):
             # Variable(s): `glitch_evaluator` (glitch evaluator); named state retained for the surrounding calculation or subsequent calls.
-            glitch_evaluator = IncrementalAPWorldEvaluator(multiworld=multiworld, world=world, player=player)
+            glitch_evaluator = IncrementalAPWorldEvaluator(
+                multiworld=multiworld, world=world, player=player,
+                dependency_blueprint=getattr(built, "_wayfinder_glitch_dependency_blueprint", None),
+            )
             setattr(built, "_wayfinder_glitch_logic_evaluator", glitch_evaluator)
         # Variable(s): `glitch_inventory` (glitch inventory); named state retained for the surrounding calculation or subsequent calls.
         glitch_inventory = Counter(inventory)
@@ -171,6 +177,96 @@ def _entrance_randomization_enabled(world: Any) -> bool | None:
             return bool(value)
 
     return any(enabled(value) for value in candidates)
+
+
+
+def _entrance_decoupled(world: Any) -> bool | None:
+    """Detect whether an entrance randomizer treats the two traversal directions independently."""
+    options = getattr(world, "options", None)
+    if options is None:
+        return None
+    try:
+        names = list(vars(options).keys())
+    except Exception:
+        names = [name for name in dir(options) if not str(name).startswith("_")]
+    found=[]
+    for name in names:
+        folded=re.sub(r"[^a-z0-9]+", "_", str(name).casefold()).strip("_")
+        if not any(token in folded for token in ("decouple", "decoupled", "coupled")):
+            continue
+        if not any(token in folded for token in ("entrance", "exit", "door", "portal", "warp")):
+            continue
+        try: raw=getattr(options,name)
+        except Exception: continue
+        value=getattr(raw,"value",raw)
+        if "coupled" in folded and "decoupl" not in folded:
+            try: state=not bool(int(value))
+            except (TypeError,ValueError): state=not bool(value)
+        else:
+            if isinstance(value,str):
+                v=value.strip().casefold(); state=v not in {"", "0", "false", "off", "none", "disabled", "coupled"}
+            else:
+                try: state=bool(int(value))
+                except (TypeError,ValueError): state=bool(value)
+        found.append(state)
+    return any(found) if found else None
+
+def _entrance_randomization_for_name(world: Any, entrance_name: str) -> bool | None:
+    """Resolve whether one entrance belongs to an enabled shuffle option.
+
+    Worlds commonly expose several independent controls (dungeon, boss, cave,
+    fairy, etc.).  Treating any enabled control as if *every* entrance were
+    shuffled hides vanilla destinations that the player is allowed to know.
+    This matcher stays game-neutral by comparing descriptive option tokens with
+    the entrance name.  ``None`` means the APWorld did not expose enough detail.
+    """
+    options = getattr(world, "options", None)
+    if options is None:
+        return None
+    try:
+        names = list(vars(options).keys())
+    except Exception:
+        names = [name for name in dir(options) if not str(name).startswith("_")]
+
+    entrance_tokens = set(re.findall(r"[a-z0-9]+", str(entrance_name).casefold()))
+    controls: list[tuple[set[str], bool]] = []
+    noise = {"randomize", "randomise", "randomized", "randomised", "shuffle", "shuffled",
+             "entrance", "entrances", "rando", "option", "options"}
+
+    def enabled(value: Any) -> bool:
+        value = getattr(value, "value", value)
+        if isinstance(value, str):
+            folded=value.strip().casefold()
+            if folded in {"", "0", "false", "off", "none", "disabled", "vanilla"}: return False
+            if folded in {"1", "true", "on", "enabled", "randomized", "randomised"}: return True
+        try: return bool(int(value))
+        except (TypeError, ValueError): return bool(value)
+
+    for name in names:
+        folded = re.sub(r"[^a-z0-9]+", "_", str(name).casefold()).strip("_")
+        if not (("entrance" in folded and ("random" in folded or "shuffle" in folded)) or folded in {"entrance_rando", "entrance_shuffle"}):
+            continue
+        try: raw=getattr(options, name)
+        except Exception: continue
+        tokens=set(re.findall(r"[a-z0-9]+", folded)) - noise
+        controls.append((tokens, enabled(raw)))
+
+    if not controls:
+        return None
+    # A single unqualified entrance-rando switch applies to every entrance.
+    unqualified=[state for tokens,state in controls if not tokens]
+    if unqualified:
+        return any(unqualified)
+    # Prefer the most descriptive matching control.  Requiring every remaining
+    # option token prevents e.g. boss entrances matching a dungeon-boss option.
+    matches=[(len(tokens),state) for tokens,state in controls if tokens and tokens.issubset(entrance_tokens)]
+    if matches:
+        best=max(size for size,_ in matches)
+        return any(state for size,state in matches if size==best)
+    # Independent controls were exposed, but none describe this entrance.  It is
+    # therefore not part of those randomized categories and its static topology
+    # remains legitimate player knowledge.
+    return False
 
 
 # /**
@@ -672,6 +768,31 @@ def build_snapshot(ctx: Any, built: Any, *, ignored_names: set[str] | None = Non
 
     # Variable(s): `logic_inventory` (logic inventory); named state retained for the surrounding calculation or subsequent calls.
     logic_inventory = Counter(inventory)
+
+    # Entrance-randomizer player knowledge layer.  The reconstructed APWorld may
+    # know the spoiler topology, but WayFinder logic must only traverse destinations
+    # the player has legitimately learned.  Non-randomized worlds are unchanged.
+    entrance_rando = _entrance_randomization_enabled(world)
+    entrance_decoupled = _entrance_decoupled(world)
+    entrance_knowledge = getattr(built, "_wayfinder_entrance_knowledge", {}) or {}
+    hidden_entrance_targets = []
+    if entrance_rando is True:
+        regions_by_name={str(getattr(r,"name","") or ""):r for r in getattr(multiworld,"regions",[]) or [] if int(getattr(r,"player",player) or player)==player}
+        for region in getattr(multiworld,"regions",[]) or []:
+            if int(getattr(region,"player",player) or player)!=player: continue
+            for ent in getattr(region,"exits",[]) or []:
+                name=str(getattr(ent,"name","") or "")
+                original=getattr(ent,"connected_region",None)
+                if _entrance_randomization_for_name(world, name) is not True:
+                    continue
+                row=entrance_knowledge.get(name,{}) if isinstance(entrance_knowledge,dict) else {}
+                known_target=str(row.get("destination","") or "")
+                if known_target and known_target in regions_by_name:
+                    hidden_entrance_targets.append((ent,original))
+                    ent.connected_region=regions_by_name[known_target]
+                elif original is not None:
+                    hidden_entrance_targets.append((ent,original))
+                    ent.connected_region=None
     # Variable(s): `result` (result), `glitch_result` (glitch result), `glitch_item_name` (glitch item name), `logic_stats` (logic stats), `glitch_logic_stats` (glitch logic stats); named state retained for the surrounding calculation or subsequent calls.
     logic_started=time.perf_counter()
     result, glitch_result, glitch_item_name, logic_stats, glitch_logic_stats = _evaluate_logic_sets(
@@ -679,6 +800,40 @@ def build_snapshot(ctx: Any, built: Any, *, ignored_names: set[str] | None = Non
         inventory=logic_inventory, checked_names=checked_names, force_full=bool(refresh_id), return_stats=True,
     )
     logic_evaluation_ms=round((time.perf_counter()-logic_started)*1000.0,3)
+    for ent,original in hidden_entrance_targets:
+        ent.connected_region=original
+    if entrance_rando is True:
+        for detail in result.entrance_details:
+            name=str(detail.get("name","") or "")
+            row=entrance_knowledge.get(name,{}) if isinstance(entrance_knowledge,dict) else {}
+            known_target=str(row.get("destination","") or "")
+            actual_target=str(detail.get("target_region","") or "")
+            detail["actual_target_region"]=actual_target
+            randomized_here=_entrance_randomization_for_name(world, name) is True
+            if randomized_here:
+                detail["target_region"]=known_target
+                detail["knowledge_state"]=(str(row.get("source","") or "player") if known_target else "unknown")
+                detail["unknown_destination"]=not bool(known_target)
+            else:
+                detail["target_region"]=actual_target
+                detail["knowledge_state"]="static"
+                detail["unknown_destination"]=False
+        if glitch_result is not None:
+            for detail in glitch_result.entrance_details:
+                name=str(detail.get("name","") or "")
+                row=entrance_knowledge.get(name,{}) if isinstance(entrance_knowledge,dict) else {}
+                known_target=str(row.get("destination","") or "")
+                actual_target=str(detail.get("target_region","") or "")
+                detail["actual_target_region"]=actual_target
+                randomized_here=_entrance_randomization_for_name(world, name) is True
+                if randomized_here:
+                    detail["target_region"]=known_target
+                    detail["knowledge_state"]=(str(row.get("source","") or "player") if known_target else "unknown")
+                    detail["unknown_destination"]=not bool(known_target)
+                else:
+                    detail["target_region"]=actual_target
+                    detail["knowledge_state"]="static"
+                    detail["unknown_destination"]=False
     # Variable(s): `glitch_only_locations` (glitch only locations); named state retained for the surrounding calculation or subsequent calls.
     glitch_only_locations = set()
     # Variable(s): `glitch_only_regions` (glitch only regions); named state retained for the surrounding calculation or subsequent calls.
@@ -915,7 +1070,11 @@ def build_snapshot(ctx: Any, built: Any, *, ignored_names: set[str] | None = Non
         "hinted_count": len(hint_rows),
         "hints": hint_rows,
         "entrances": sorted(result.reachable_entrances),
-        "entrance_randomization_enabled": _entrance_randomization_enabled(world),
+        "entrance_randomization_enabled": entrance_rando,
+        "entrance_decoupled": entrance_decoupled,
+        "exit_details": [dict(row) for row in result.entrance_details],
+        "entrance_knowledge_mode": "player_knowledge" if entrance_rando is True else "authoritative",
+        "entrance_known_destinations": sum(1 for row in result.entrance_details if row.get("target_region")),
         "entrance_details": result.entrance_details,
         "event_details": result.event_details,
         "rule_details": result.rule_details,

@@ -497,7 +497,10 @@ class NativeRuntime(NativeReliability):
                         self.game = ""
                     self._game_probe_active = False
                     self._game_probe_token += 1
+                    auth_ms = round((time.perf_counter() - getattr(outer, "_connection_started_at", time.perf_counter())) * 1000.0, 3)
+                    outer._authentication_ms = auth_ms
                     outer.send_log(f"Connected to Archipelago as {self.auth} ({self.game}).")
+                    outer.send_log(f"[PERF] Connection authentication: {auth_ms:.1f} ms")
                     outer.world_preparation("authentication",2,10,f"Authenticated slot {self.auth}",game=self.game,slot=self.auth,progress_mode="determinate",progress_current=1,progress_total=1)
                     outer.world_preparation("game_detection",3,10,f"Connected game: {self.game}",game=self.game,slot=self.auth,progress_mode="determinate",progress_current=1,progress_total=1)
                     outer.send_status("ap_connection_state", {"state": "connected", "message": ""})
@@ -983,6 +986,35 @@ class NativeRuntime(NativeReliability):
             self.jobs.cancel()
             self.connection_id=str(msg.get('connection_id') or self.connection_id)
             self.schedule(self.disconnect_ap())
+        elif cmd == "entrance_discover":
+            entrance=str(msg.get("entrance","") or "").strip(); destination=str(msg.get("destination","") or "").strip()
+            built=self.built
+            seed_key=str(getattr(built,"_wayfinder_cache_key","") or "") if built else ""
+            if not built or not seed_key or not entrance or not destination:
+                self.send_error("WF_ENTRANCE_KNOWLEDGE_BAD_REQUEST","Entrance and destination are required for an active reconstructed seed.",component="Entrances")
+            else:
+                regions={str(getattr(r,"name","") or "") for r in getattr(built.multiworld,"regions",[]) or [] if int(getattr(r,"player",built.player) or built.player)==built.player}
+                names={str(getattr(e,"name","") or "") for r in getattr(built.multiworld,"regions",[]) or [] for e in (getattr(r,"exits",[]) or []) if int(getattr(r,"player",built.player) or built.player)==built.player}
+                if entrance not in names or destination not in regions:
+                    self.send_error("WF_ENTRANCE_KNOWLEDGE_UNKNOWN","Entrance or destination is not part of the reconstructed seed.",component="Entrances")
+                else:
+                    from .entrance_knowledge import set_destination, load as load_entrance_knowledge
+                    set_destination(seed_key,entrance,destination,source="player")
+                    built._wayfinder_entrance_knowledge=load_entrance_knowledge(seed_key)
+                    # Topology knowledge changed: discard incremental live-state evaluators.
+                    for attr in ("_wayfinder_logic_evaluator","_wayfinder_glitch_logic_evaluator"):
+                        if hasattr(built,attr): delattr(built,attr)
+                    self.send_log(f"[ENTRANCE] Player discovered {entrance} -> {destination}")
+                    self.publish()
+        elif cmd == "entrance_forget":
+            entrance=str(msg.get("entrance","") or "").strip(); built=self.built
+            seed_key=str(getattr(built,"_wayfinder_cache_key","") or "") if built else ""
+            if built and seed_key and entrance:
+                from .entrance_knowledge import forget, load as load_entrance_knowledge
+                forget(seed_key,entrance); built._wayfinder_entrance_knowledge=load_entrance_knowledge(seed_key)
+                for attr in ("_wayfinder_logic_evaluator","_wayfinder_glitch_logic_evaluator"):
+                    if hasattr(built,attr): delattr(built,attr)
+                self.send_log(f"[ENTRANCE] Forgot player mapping for {entrance}"); self.publish()
         elif cmd == "set_ignored":
             raw_names = msg.get("names", [])
             self.ignored_names = {str(name).strip() for name in raw_names if str(name).strip()} if isinstance(raw_names, list) else set()
@@ -1084,6 +1116,7 @@ class NativeRuntime(NativeReliability):
         # Re-arm connection state only after any genuinely live old session has
         # finished cleanup.  Explicitly set all fields used by the AP auth path.
         self.jobs.cancel(); self.built=None; self.ignored_names.clear(); self.last_snapshot={}
+        self._connection_started_at = time.perf_counter()
         self.transition("CONNECTING","Connecting to Archipelago")
         self.component_health("AP Server","busy","Connecting")
         self.ctx._wayfinder_manual_disconnect = False

@@ -165,7 +165,7 @@ def test_map_coverage_uses_resolved_ids_and_reports_unknowns(tmp_path):
     report=map_intelligence(snap,pack,lambda marker,index:snap.locations[0] if marker.location_name=='Alias' else None)
     assert report['missing_markers']==['Missing']
     assert report['unknown_locations']==['Not in seed']
-    assert report['unknown_entrances']==['Door']
+    assert report['unknown_entrances']==[]
     assert report['maps']['Real']==['Area']
 
 

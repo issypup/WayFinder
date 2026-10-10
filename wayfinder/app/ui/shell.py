@@ -211,6 +211,7 @@ class ShellMixin:
             "Inventory": ("Inventory", "inventory"),
             "Events": ("Events", "events"),
             "Entrances": ("Entrances", "entrances"),
+            "Exits": ("Exits", "exits"),
             "WayFinder Setup": ("WayFinder Setup", "setup"),
             "Diagnostics": ("Diagnostics", "diagnostics"),
             "APWorld Compatibility": ("APWorld Compatibility", "compatibility"),
@@ -220,7 +221,7 @@ class ShellMixin:
         self._nav_icon_images = {}
         bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[3]))
         icon_root = bundle_root / "assets" / "sidebar"
-        for name in ["Dashboard","AP Connection","APWorlds","Seed","Runtime Health","Map Intelligence","Search, Hints & Inventory","Checks","Map","Installed Maps","Pack Converter","I’m Stuck?","Progression Graph","Path Explorer","Log","Events","Entrances","WayFinder Setup","Diagnostics","APWorld Compatibility"]:
+        for name in ["Dashboard","AP Connection","APWorlds","Seed","Runtime Health","Map Intelligence","Search, Hints & Inventory","Checks","Map","Installed Maps","Pack Converter","I’m Stuck?","Progression Graph","Path Explorer","Log","Events","Entrances","Exits","WayFinder Setup","Diagnostics","APWorld Compatibility"]:
             label, icon_key = nav_labels[name]
             normal = active = None
             try:
@@ -277,7 +278,7 @@ class ShellMixin:
         self.game_var=tk.StringVar(value="")
     def _build_pages(self):
         """Construct the pages UI/data structure and attach its callbacks."""
-        self._build_dashboard(); self._build_search(); self._build_search_hints_inventory(); self._build_checks(); self._build_map(); self._build_installed_maps(); self._build_pack_converter(); self._build_stuck(); self._build_progression_graph(); self._build_path(); self._build_log(); self._build_inventory(); self._build_events(); self._build_entrances(); self._build_wayfinder_setup(); self._build_diagnostics(); self._build_logic_engine(); self._build_compatibility(); self._build_seed_page(); self._build_runtime_health(); self._build_map_intelligence(); self._build_apworlds(); self._build_ap_inspector()
+        self._build_dashboard(); self._build_search(); self._build_search_hints_inventory(); self._build_checks(); self._build_map(); self._build_installed_maps(); self._build_pack_converter(); self._build_stuck(); self._build_progression_graph(); self._build_path(); self._build_log(); self._build_inventory(); self._build_events(); self._build_entrances(); self._build_exits(); self._build_wayfinder_setup(); self._build_diagnostics(); self._build_logic_engine(); self._build_compatibility(); self._build_seed_page(); self._build_runtime_health(); self._build_map_intelligence(); self._build_apworlds(); self._build_ap_inspector()
     def _page(self,name):
         """Create a responsive, vertically scrollable application page.
 

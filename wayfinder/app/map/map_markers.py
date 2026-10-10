@@ -402,9 +402,10 @@ class MapMarkersMixin:
                 # Exit/transition endpoints may be driven entirely by PopTracker Lua.
                 # They are still real map objects and must not disappear merely
                 # because there is no corresponding AP location in the seed.
-                member_states=["unknown"]
+                exit_status=self._map_exit_marker_status(m)
+                member_states=[exit_status]
                 active_member_names=[m.location_name]
-                statuses[m.location_name]="unknown"
+                statuses[m.location_name]=exit_status
             # Loop variable(s): `member_index` (member index), `member_name` (member name); each iteration represents the next value from the iterable below.
             for member_index,member_name in enumerate(() if getattr(m, "is_synthetic_marker", False) else m.member_names):
                 # Variable(s): `loc` (loc); named state retained for the surrounding calculation or subsequent calls.

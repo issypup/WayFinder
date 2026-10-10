@@ -135,6 +135,10 @@ class Snapshot:
     entrance_details: list[dict[str, Any]] = field(default_factory=list)
     # True/False when the APWorld exposes entrance-randomization options; None when unknown.
     entrance_randomization_enabled: bool | None = None
+    entrance_decoupled: bool | None = None
+    exit_details: list[dict[str, Any]] = field(default_factory=list)
+    entrance_knowledge_mode: str = "authoritative"
+    entrance_known_destinations: int = 0
     # Variable(s): `event_details` (event details); named state retained for the surrounding calculation or subsequent calls.
     event_details: list[dict[str, Any]] = field(default_factory=list)
     # Variable(s): `rule_details` (rule details); named state retained for the surrounding calculation or subsequent calls.
@@ -484,6 +488,10 @@ def _snapshot_from_dict(data: dict[str, Any]) -> Snapshot:
         entrances=list(data.get("entrances", [])) if isinstance(data.get("entrances", []), list) else [],
         entrance_details=list(data.get("entrance_details", [])) if isinstance(data.get("entrance_details", []), list) else [],
         entrance_randomization_enabled=(None if data.get("entrance_randomization_enabled", None) is None else bool(data.get("entrance_randomization_enabled"))),
+        entrance_decoupled=(None if data.get("entrance_decoupled", None) is None else bool(data.get("entrance_decoupled"))),
+        exit_details=list(data.get("exit_details", [])) if isinstance(data.get("exit_details", []), list) else [],
+        entrance_knowledge_mode=str(data.get("entrance_knowledge_mode","authoritative") or "authoritative"),
+        entrance_known_destinations=int(data.get("entrance_known_destinations",0) or 0),
         event_details=list(data.get("event_details", [])) if isinstance(data.get("event_details", []), list) else [],
         rule_details=dict(data.get("rule_details", {})) if isinstance(data.get("rule_details", {}), dict) else {},
         unsupported_state_calls=list(data.get("unsupported_state_calls", [])) if isinstance(data.get("unsupported_state_calls", []), list) else [],
@@ -1232,6 +1240,14 @@ class WayFinderRuntimeClient:
     #  * Purpose: Refresh state from the latest available state.
     #  * @returns: See the return annotation and implementation; side effects are documented inline where they occur.
     #  */
+    def discover_entrance(self, entrance: str, destination: str) -> bool:
+        """Record a player-discovered entrance destination for the active seed."""
+        return self._send({"cmd":"entrance_discover","entrance":str(entrance),"destination":str(destination)})
+
+    def forget_entrance(self, entrance: str) -> bool:
+        """Forget a player-entered entrance mapping for the active seed."""
+        return self._send({"cmd":"entrance_forget","entrance":str(entrance)})
+
     def refresh_state(self) -> int:
         """Request a refresh and return the request id used to reject stale completions."""
         # Variable(s): `refresh_id` (refresh id); named state retained for the surrounding calculation or subsequent calls.

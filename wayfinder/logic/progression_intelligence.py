@@ -195,7 +195,7 @@ def build_progression_graph(snapshot: Any) -> ProgressionGraphModel:
 
         ekey = add("entrance", name, entrance_status)
         source = str(ent.get("source_region", "") or ent.get("source", "")).strip()
-        target = str(ent.get("target_region", "") or ent.get("target", "")).strip()
+        target = "" if ent.get("unknown_destination") else str(ent.get("target_region", "") or ent.get("target", "")).strip()
         if source:
             edges.append(GraphEdge(add("region", source), ekey, "leads via"))
         if target:
